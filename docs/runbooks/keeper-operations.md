@@ -51,12 +51,9 @@ This runbook covers local startup, dry-run execution, grant debugging, partial f
 
 - `KEEPER_MODE=live` uses the real Initia `RESTClient` and signs with `KEEPER_PRIVATE_KEY`.
 - Startup fails fast if the derived wallet address does not match `KEEPER_ADDRESS`.
-- Single-asset provide resolves the input coin metadata with `move.metadata(inputDenom)`, BCS-encodes the InitiaDEX call, broadcasts it, and measures minted LP by querying the LP balance before and after the tx.
+- Single-asset provide resolves the input coin metadata with `move.metadata(inputDenom)`, simulates the authz-wrapped call first, derives an LP quote from the simulated `coin_received` events for the user, and then BCS-encodes `min_liquidity` from that quote before broadcast.
 - If the tx confirms but no LP delta is observable yet, the strategy moves to `partial_lp` and the next tick retries delegation only after reconciliation sees the LP tokens.
-
-Current limitation:
-
-- `maxSlippageBps` is stored and validated at the API layer, but live mode does not yet convert it into a non-null `min_liquidity` guard for `single_asset_provide_liquidity_script`. Treat live mode as testnet-only until quoting/simulation is added.
+- If simulation does not produce a trustworthy LP quote for the configured user and LP denom, the keeper refuses to broadcast the provide tx.
 
 ## Grant Debugging
 
@@ -108,4 +105,4 @@ Recovery sequence:
 5. Confirm positions update as expected after dry-run ticks.
 6. Confirm `TARGET_POOL_ID` is the actual pair object address and that each strategy `inputDenom` resolves via `move.metadata(...)`.
 7. Confirm `KEEPER_ADDRESS` matches the configured private key.
-8. Keep the first live runs limited to small testnet amounts until `min_liquidity` enforcement is implemented.
+8. Keep the first live runs limited to small testnet amounts until the quote parser has been validated against your exact pool and denom set.

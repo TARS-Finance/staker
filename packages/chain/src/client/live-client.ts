@@ -1,5 +1,6 @@
 import {
   bcs,
+  Coins,
   RawKey,
   RESTClient,
   type RESTClientConfig,
@@ -26,6 +27,7 @@ type CoinsLike = {
 
 type WalletLike = {
   createAndSignTx(input: { msgs: unknown[] }): Promise<Tx | unknown>;
+  sequence(): Promise<number>;
 };
 
 type InjectedWalletLike = WalletLike & {
@@ -46,6 +48,17 @@ type RestClientLike = {
     ): Promise<{ balance: CoinsLike }>;
   };
   tx: {
+    simulate(input: {
+      msgs: unknown[];
+      sequence: number;
+    }): Promise<{
+      result: {
+        events: Array<{
+          type: string;
+          attributes: Array<{ key: string; value: string }>;
+        }>;
+      };
+    }>;
     broadcast(tx: Tx | unknown): Promise<{
       txhash: string;
       raw_log: string;
@@ -88,6 +101,48 @@ function isBroadcastError(result: {
   }
 
   return String(result.code) !== "0";
+}
+
+function applySlippageBps(amount: bigint, slippageBps: string) {
+  const bps = BigInt(slippageBps);
+
+  if (bps < 0n || bps > 10_000n) {
+    throw new Error(`Invalid slippage bps: ${slippageBps}`);
+  }
+
+  return (amount * (10_000n - bps)) / 10_000n;
+}
+
+function parseCoinAmount(input: string, denom: string) {
+  const coins = Coins.fromString(input);
+  return BigInt(coins.get(denom)?.amount ?? "0");
+}
+
+function extractLpQuoteFromSimulation(input: {
+  events: Array<{
+    type: string;
+    attributes: Array<{ key: string; value: string }>;
+  }>;
+  userAddress: string;
+  lpDenom: string;
+}) {
+  let lpAmount = 0n;
+
+  for (const event of input.events) {
+    const attributes = new Map(
+      event.attributes.map((attribute) => [attribute.key, attribute.value])
+    );
+    const receiver = attributes.get("receiver");
+    const amount = attributes.get("amount");
+
+    if (receiver !== input.userAddress || !amount) {
+      continue;
+    }
+
+    lpAmount += parseCoinAmount(amount, input.lpDenom);
+  }
+
+  return lpAmount;
 }
 
 async function queryBalanceByDenom(
@@ -167,6 +222,39 @@ export class LiveKeeperChainClient implements KeeperChainClient {
         lpDenom: request.lpDenom,
       })
     );
+    const inputCoinMetadata = await this.rest.move.metadata(request.inputDenom);
+    const simulationMsg = buildProvideLiquidityMsg({
+      grantee: this.keeperAddress,
+      userAddress: request.userAddress,
+      moduleAddress: request.moduleAddress,
+      moduleName: request.moduleName,
+      args: [
+        bcs.object().serialize(request.targetPoolId).toBase64(),
+        bcs.object().serialize(inputCoinMetadata).toBase64(),
+        bcs.u64().serialize(BigInt(request.amount)).toBase64(),
+        bcs.option(bcs.u64()).serialize(null).toBase64(),
+      ],
+    });
+    const simulation = await this.rest.tx.simulate({
+      msgs: [simulationMsg],
+      sequence: await this.wallet.sequence(),
+    });
+    const quotedLpAmount = extractLpQuoteFromSimulation({
+      events: simulation.result.events,
+      userAddress: request.userAddress,
+      lpDenom: request.lpDenom,
+    });
+
+    if (quotedLpAmount <= 0n) {
+      throw new Error(
+        `Unable to derive a trustworthy LP quote for ${request.lpDenom} from simulation output.`
+      );
+    }
+
+    const minLiquidity = applySlippageBps(
+      quotedLpAmount,
+      request.maxSlippageBps
+    );
     const msg = buildProvideLiquidityMsg({
       grantee: this.keeperAddress,
       userAddress: request.userAddress,
@@ -174,11 +262,9 @@ export class LiveKeeperChainClient implements KeeperChainClient {
       moduleName: request.moduleName,
       args: [
         bcs.object().serialize(request.targetPoolId).toBase64(),
-        bcs.object()
-          .serialize(await this.rest.move.metadata(request.inputDenom))
-          .toBase64(),
+        bcs.object().serialize(inputCoinMetadata).toBase64(),
         bcs.u64().serialize(BigInt(request.amount)).toBase64(),
-        bcs.option(bcs.u64()).serialize(null).toBase64(),
+        bcs.option(bcs.u64()).serialize(minLiquidity).toBase64(),
       ],
     });
     const signedTx = await this.wallet.createAndSignTx({

@@ -1,3 +1,4 @@
+import { bcs } from "@initia/initia.js";
 import { describe, expect, it, vi } from "vitest";
 import { createLiveKeeperChainClient } from "../src/index.js";
 
@@ -36,13 +37,15 @@ describe("live keeper chain client", () => {
           }))
         },
         tx: {
+          simulate: vi.fn(),
           broadcast: vi.fn(),
           txInfo: vi.fn()
         }
       },
       wallet: {
         accAddress: "init1keeperaddress",
-        createAndSignTx: vi.fn()
+        createAndSignTx: vi.fn(),
+        sequence: vi.fn(async () => 7)
       }
     });
 
@@ -77,6 +80,19 @@ describe("live keeper chain client", () => {
       raw_log: "",
       logs: []
     }));
+    const simulate = vi.fn(async () => ({
+      result: {
+        events: [
+          {
+            type: "coin_received",
+            attributes: [
+              { key: "receiver", value: "init1useraddress" },
+              { key: "amount", value: "20ulp" }
+            ]
+          }
+        ]
+      }
+    }));
     const createAndSignTx = vi.fn(async (input: unknown) => input);
 
     const client = createLiveKeeperChainClient({
@@ -92,13 +108,15 @@ describe("live keeper chain client", () => {
           delegation: vi.fn()
         },
         tx: {
+          simulate,
           broadcast,
           txInfo: vi.fn()
         }
       },
       wallet: {
         accAddress: "init1keeperaddress",
-        createAndSignTx
+        createAndSignTx,
+        sequence: vi.fn(async () => 7)
       }
     });
 
@@ -119,14 +137,87 @@ describe("live keeper chain client", () => {
     });
 
     const provideTxInput = createAndSignTx.mock.calls[0]?.[0] as {
-      msgs: Array<{ toData(): { "@type": string } }>;
+      msgs: Array<{
+        toData(): {
+          "@type": string;
+          msgs: Array<{ args: string[] }>;
+        };
+      }>;
     };
 
     expect(createAndSignTx).toHaveBeenCalledTimes(1);
+    expect(simulate).toHaveBeenCalledTimes(1);
     expect(provideTxInput.msgs[0]?.toData()["@type"]).toBe(
       "/cosmos.authz.v1beta1.MsgExec"
     );
+    expect(
+      provideTxInput.msgs[0]?.toData().msgs[0]?.args[3]
+    ).toBe(bcs.option(bcs.u64()).serialize(19n).toBase64());
     expect(broadcast).toHaveBeenCalledTimes(1);
+  });
+
+  it("refuses to broadcast a provide tx when simulation cannot derive an lp quote", async () => {
+    const broadcast = vi.fn(async () => ({
+      txhash: "provide-hash",
+      raw_log: "",
+      logs: []
+    }));
+    const simulate = vi.fn(async () => ({
+      result: {
+        events: [
+          {
+            type: "coin_received",
+            attributes: [
+              { key: "receiver", value: "init1differentuser" },
+              { key: "amount", value: "20ulp" }
+            ]
+          }
+        ]
+      }
+    }));
+
+    const client = createLiveKeeperChainClient({
+      lcdUrl: "https://rest.testnet.initia.xyz",
+      privateKey: "1".repeat(64),
+      keeperAddress: "init1keeperaddress",
+      restClient: {
+        bank: {
+          balanceByDenom: vi.fn(async () => ({ amount: "10", denom: "ulp" }))
+        },
+        move: {
+          metadata: vi.fn(async () => coinMetadataObjectId)
+        },
+        mstaking: {
+          delegation: vi.fn()
+        },
+        tx: {
+          simulate,
+          broadcast,
+          txInfo: vi.fn()
+        }
+      },
+      wallet: {
+        accAddress: "init1keeperaddress",
+        createAndSignTx: vi.fn(async (input: unknown) => input),
+        sequence: vi.fn(async () => 7)
+      }
+    });
+
+    await expect(
+      client.provideSingleAssetLiquidity({
+        userAddress: "init1useraddress",
+        targetPoolId: pairObjectId,
+        inputDenom: "usdc",
+        lpDenom: "ulp",
+        amount: "250",
+        maxSlippageBps: "100",
+        moduleAddress: "0x1",
+        moduleName: "dex"
+      })
+    ).rejects.toThrow(/lp quote/i);
+
+    expect(simulate).toHaveBeenCalledTimes(1);
+    expect(broadcast).not.toHaveBeenCalled();
   });
 
   it("signs and broadcasts an authz-wrapped delegate tx", async () => {
@@ -152,13 +243,15 @@ describe("live keeper chain client", () => {
           delegation: vi.fn()
         },
         tx: {
+          simulate: vi.fn(),
           broadcast,
           txInfo: vi.fn()
         }
       },
       wallet: {
         accAddress: "init1keeperaddress",
-        createAndSignTx
+        createAndSignTx,
+        sequence: vi.fn(async () => 7)
       }
     });
 
@@ -199,13 +292,15 @@ describe("live keeper chain client", () => {
             delegation: vi.fn()
           },
           tx: {
+            simulate: vi.fn(),
             broadcast: vi.fn(),
             txInfo: vi.fn()
           }
         },
         wallet: {
           accAddress: "init1differentkeeper",
-          createAndSignTx: vi.fn()
+          createAndSignTx: vi.fn(),
+          sequence: vi.fn()
         }
       })
     ).toThrow(/keeper address/i);

@@ -52,10 +52,9 @@ For safety, Phase 5 adds `KEEPER_MODE=dry-run|live`. Dry-run mode:
 
 - Dry-run balances are synthetic and not a price-accurate market simulation.
 - The database is required even for local verification flows.
-- Live mode currently uses `single_asset_provide_liquidity_script` with a null `min_liquidity`, so slippage protection is not yet enforced by the keeper.
+- Live mode now depends on simulated event parsing to derive `min_liquidity`; if InitiaDEX or bank event shapes change, the keeper will refuse to broadcast until the parser is updated.
 
 ## Follow-Up
 
-- Add quoting/simulation so `maxSlippageBps` becomes a real `min_liquidity` guard.
 - Add structured logging and dry-run report storage if operator review needs become heavier.
 - Expand the end-to-end tests once a live-mode smoke environment is available.
