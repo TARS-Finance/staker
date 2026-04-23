@@ -9,10 +9,15 @@ export { getLpBalance } from "./query/get-lp-balance.js";
 export { getDelegatedLpBalance } from "./query/get-delegated-lp-balance.js";
 export { reconcileProvide } from "./reconcile/reconcile-provide.js";
 export { reconcileDelegate } from "./reconcile/reconcile-delegate.js";
+export {
+  createDryRunKeeperChainClient,
+  DryRunKeeperChainClient
+} from "./client/dry-run-client.js";
 export type {
   DelegateLpRequest,
   DelegateLpResult,
   KeeperChainClient,
+  KeeperMode,
   ProvideSingleAssetLiquidityRequest,
   ProvideSingleAssetLiquidityResult
 } from "./query/types.js";

@@ -8,8 +8,8 @@
   },
   "scripts": {
     "build": "pnpm -r --if-present build",
-    "typecheck": "pnpm -r --if-present typecheck",
-    "lint": "pnpm -r --if-present lint",
+    "typecheck": "tsc -p tsconfig.integration.json --noEmit && pnpm -r --if-present typecheck",
+    "lint": "eslint scripts test --ext .ts && pnpm -r --if-present lint",
     "test": "node ./scripts/run-vitest.mjs",
     "db:generate": "pnpm exec drizzle-kit generate --config=drizzle.config.ts",
     "db:migrate": "pnpm exec tsx packages/db/scripts/migrate.ts",

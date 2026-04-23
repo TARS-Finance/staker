@@ -16,12 +16,13 @@ type MockFeConfig = {
 
 function readArgument(name: string): string {
   const index = process.argv.indexOf(name);
+  const value = process.argv[index + 1];
 
-  if (index === -1 || !process.argv[index + 1]) {
+  if (index === -1 || !value) {
     throw new Error(`Missing required argument: ${name}`);
   }
 
-  return process.argv[index + 1];
+  return value;
 }
 
 async function requestJson<T>(input: string, init?: RequestInit): Promise<T> {

@@ -4,4 +4,5 @@ set -euo pipefail
 
 pnpm lint
 pnpm typecheck
+pnpm db:migrate
 pnpm test

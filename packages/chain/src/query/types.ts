@@ -1,3 +1,5 @@
+export type KeeperMode = "dry-run" | "live";
+
 export type ProvideSingleAssetLiquidityRequest = {
   userAddress: string;
   targetPoolId: string;
@@ -25,6 +27,7 @@ export type DelegateLpResult = {
 };
 
 export interface KeeperChainClient {
+  readonly mode: KeeperMode;
   getInputBalance(input: {
     userAddress: string;
     denom: string;

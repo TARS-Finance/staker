@@ -4,6 +4,7 @@ export const executionStatusSchema = z.enum([
   "queued",
   "providing",
   "delegating",
+  "simulated",
   "success",
   "failed",
   "retryable"
@@ -25,7 +26,7 @@ export function createExecutionStatusPayload(
   };
 
   if (
-    ["providing", "delegating", "success", "failed", "retryable"].includes(
+    ["providing", "delegating", "simulated", "success", "failed", "retryable"].includes(
       input.status
     )
     && input.provideTxHash
@@ -34,7 +35,7 @@ export function createExecutionStatusPayload(
   }
 
   if (
-    ["delegating", "success", "failed", "retryable"].includes(input.status)
+    ["delegating", "simulated", "success", "failed", "retryable"].includes(input.status)
     && input.delegateTxHash
   ) {
     payload.delegateTxHash = input.delegateTxHash;

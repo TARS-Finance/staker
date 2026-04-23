@@ -12,6 +12,7 @@ type ExecutionStatus =
   | "queued"
   | "providing"
   | "delegating"
+  | "simulated"
   | "success"
   | "failed"
   | "retryable";
@@ -103,7 +104,7 @@ export class InMemoryStrategiesRepository {
   async findRunnableStrategies(now: Date) {
     return this.strategies.filter(
       (strategy) =>
-        strategy.nextEligibleAt === null || strategy.nextEligibleAt <= now
+        strategy.nextEligibleAt === null || strategy.nextEligibleAt <= now,
     );
   }
 
@@ -140,7 +141,7 @@ export class InMemoryExecutionsRepository {
   async create(values: Omit<ExecutionRecord, "id">) {
     const execution: ExecutionRecord = {
       id: `execution-${++executionSequence}`,
-      ...values
+      ...values,
     };
 
     this.executions.push(execution);
@@ -150,7 +151,9 @@ export class InMemoryExecutionsRepository {
   async findLatestForStrategy(strategyId: string) {
     const matches = this.executions
       .filter((execution) => execution.strategyId === strategyId)
-      .sort((left, right) => right.startedAt.getTime() - left.startedAt.getTime());
+      .sort(
+        (left, right) => right.startedAt.getTime() - left.startedAt.getTime(),
+      );
 
     return matches[0] ?? null;
   }
@@ -178,12 +181,17 @@ export class InMemoryPositionsRepository {
   constructor(private readonly positions: PositionRecord[]) {}
 
   async findByStrategyId(strategyId: string) {
-    return this.positions.find((position) => position.strategyId === strategyId) ?? null;
+    return (
+      this.positions.find((position) => position.strategyId === strategyId) ??
+      null
+    );
   }
 
-  async upsertForStrategy(values: Omit<PositionRecord, "id"> & { id?: string }) {
+  async upsertForStrategy(
+    values: Omit<PositionRecord, "id"> & { id?: string },
+  ) {
     const existing = this.positions.find(
-      (position) => position.strategyId === values.strategyId
+      (position) => position.strategyId === values.strategyId,
     );
 
     if (existing) {
@@ -199,7 +207,7 @@ export class InMemoryPositionsRepository {
       lastLpBalance: values.lastLpBalance,
       lastDelegatedLpBalance: values.lastDelegatedLpBalance,
       lastRewardSnapshot: values.lastRewardSnapshot,
-      lastSyncedAt: values.lastSyncedAt
+      lastSyncedAt: values.lastSyncedAt,
     };
 
     this.positions.push(position);
@@ -232,6 +240,7 @@ export type FakeChainState = {
 };
 
 export class FakeKeeperChain {
+  readonly mode = "live" as const;
   provideCalls = 0;
   delegateCalls = 0;
 
@@ -286,19 +295,21 @@ export class FakeKeeperChain {
   }
 }
 
-export function createKeeperFixture(overrides: Partial<{
-  users: UserRecord[];
-  strategies: StrategyRecord[];
-  grants: GrantRecord[];
-  executions: ExecutionRecord[];
-  positions: PositionRecord[];
-  chainState: FakeChainState;
-}> = {}) {
+export function createKeeperFixture(
+  overrides: Partial<{
+    users: UserRecord[];
+    strategies: StrategyRecord[];
+    grants: GrantRecord[];
+    executions: ExecutionRecord[];
+    positions: PositionRecord[];
+    chainState: FakeChainState;
+  }> = {},
+) {
   const users = overrides.users ?? [
     {
       id: "user-1",
-      initiaAddress: "init1useraddress"
-    }
+      initiaAddress: "init1useraddress",
+    },
   ];
   const strategies = overrides.strategies ?? [
     {
@@ -316,8 +327,8 @@ export function createKeeperFixture(overrides: Partial<{
       cooldownSeconds: "300",
       lastExecutedAt: null,
       nextEligibleAt: null,
-      pauseReason: null
-    }
+      pauseReason: null,
+    },
   ];
   const grants = overrides.grants ?? [
     {
@@ -328,8 +339,8 @@ export function createKeeperFixture(overrides: Partial<{
       feegrantExpiresAt: new Date("2026-05-01T00:00:00.000Z"),
       moveGrantStatus: "active",
       stakingGrantStatus: "active",
-      feegrantStatus: "active"
-    }
+      feegrantStatus: "active",
+    },
   ];
   const executions = overrides.executions ?? [];
   const positions = overrides.positions ?? [];
@@ -339,11 +350,11 @@ export function createKeeperFixture(overrides: Partial<{
     delegatedLpBalance: "250",
     provideResult: {
       txHash: "provide-1",
-      lpAmount: "250"
+      lpAmount: "250",
     },
     delegateResult: {
-      txHash: "delegate-1"
-    }
+      txHash: "delegate-1",
+    },
   };
 
   return {
@@ -357,6 +368,6 @@ export function createKeeperFixture(overrides: Partial<{
     grantsRepository: new InMemoryGrantsRepository(grants),
     executionsRepository: new InMemoryExecutionsRepository(executions),
     positionsRepository: new InMemoryPositionsRepository(positions),
-    chain: new FakeKeeperChain(chainState)
+    chain: new FakeKeeperChain(chainState),
   };
 }

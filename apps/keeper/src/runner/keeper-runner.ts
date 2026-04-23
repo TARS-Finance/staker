@@ -1,9 +1,15 @@
 import {
   reconcileDelegate,
   reconcileProvide,
-  type KeeperChainClient
+  type KeeperChainClient,
+  type KeeperMode,
 } from "@stacker/chain";
-import { computeNextEligibleAt, isGrantBundleActive, minBigIntString, serializeError } from "./retry-policy.js";
+import {
+  computeNextEligibleAt,
+  isGrantBundleActive,
+  minBigIntString,
+  serializeError,
+} from "./retry-policy.js";
 import { StrategyLocks } from "./locks.js";
 
 type UserRecord = {
@@ -56,6 +62,7 @@ type ExecutionRecord = {
     | "queued"
     | "providing"
     | "delegating"
+    | "simulated"
     | "success"
     | "failed"
     | "retryable";
@@ -86,10 +93,7 @@ type KeeperDependencies = {
   };
   strategiesRepository: {
     findRunnableStrategies(now: Date): Promise<StrategyRecord[]>;
-    patch(
-      id: string,
-      values: Partial<StrategyRecord>
-    ): Promise<StrategyRecord>;
+    patch(id: string, values: Partial<StrategyRecord>): Promise<StrategyRecord>;
   };
   grantsRepository: {
     findByUserId(userId: string): Promise<GrantRecord | null>;
@@ -99,13 +103,13 @@ type KeeperDependencies = {
     findLatestForStrategy(strategyId: string): Promise<ExecutionRecord | null>;
     update(
       id: string,
-      values: Partial<ExecutionRecord>
+      values: Partial<ExecutionRecord>,
     ): Promise<ExecutionRecord>;
   };
   positionsRepository: {
     findByStrategyId(strategyId: string): Promise<PositionRecord | null>;
     upsertForStrategy(
-      values: Omit<PositionRecord, "id"> & { id?: string }
+      values: Omit<PositionRecord, "id"> & { id?: string },
     ): Promise<PositionRecord>;
   };
   chain: KeeperChainClient;
@@ -131,7 +135,7 @@ export type TickResult = {
 function buildResult(
   strategyId: string,
   outcome: TickResult["outcome"],
-  reason: TickResult["reason"]
+  reason: TickResult["reason"],
 ): TickResult {
   return { strategyId, outcome, reason };
 }
@@ -139,17 +143,20 @@ function buildResult(
 export function createKeeperRunner(dependencies: KeeperDependencies) {
   const locks = dependencies.locks ?? new StrategyLocks();
   const lpDenom = dependencies.lpDenom ?? "ulp";
+  const executionStatusForCompletion = (
+    mode: KeeperMode,
+  ): "success" | "simulated" => (mode === "dry-run" ? "simulated" : "success");
 
   async function syncPosition(
     strategy: StrategyRecord,
     user: UserRecord,
-    now: Date
+    now: Date,
   ) {
     const balances = await reconcileDelegate(dependencies.chain, {
       userAddress: user.initiaAddress,
       inputDenom: strategy.inputDenom,
       lpDenom,
-      validatorAddress: strategy.validatorAddress
+      validatorAddress: strategy.validatorAddress,
     });
 
     await dependencies.positionsRepository.upsertForStrategy({
@@ -159,7 +166,7 @@ export function createKeeperRunner(dependencies: KeeperDependencies) {
       lastLpBalance: balances.lastLpBalance,
       lastDelegatedLpBalance: balances.lastDelegatedLpBalance,
       lastRewardSnapshot: null,
-      lastSyncedAt: now
+      lastSyncedAt: now,
     });
   }
 
@@ -167,15 +174,15 @@ export function createKeeperRunner(dependencies: KeeperDependencies) {
     strategy: StrategyRecord,
     user: UserRecord,
     latestExecution: ExecutionRecord,
-    now: Date
+    now: Date,
   ): Promise<TickResult> {
     const position = await dependencies.positionsRepository.findByStrategyId(
-      strategy.id
+      strategy.id,
     );
 
     if (latestExecution.delegateTxHash) {
       const delegateConfirmed = await dependencies.chain.isTxConfirmed(
-        latestExecution.delegateTxHash
+        latestExecution.delegateTxHash,
       );
 
       if (!delegateConfirmed) {
@@ -188,14 +195,14 @@ export function createKeeperRunner(dependencies: KeeperDependencies) {
       execution: latestExecution,
       userAddress: user.initiaAddress,
       lpDenom,
-      lastKnownLpBalance: position?.lastLpBalance ?? "0"
+      lastKnownLpBalance: position?.lastLpBalance ?? "0",
     });
 
     if (provideState.status === "pending-confirmation") {
       return buildResult(
         strategy.id,
         "skipped",
-        "provide-pending-confirmation"
+        "provide-pending-confirmation",
       );
     }
 
@@ -208,23 +215,23 @@ export function createKeeperRunner(dependencies: KeeperDependencies) {
         userAddress: user.initiaAddress,
         validatorAddress: strategy.validatorAddress,
         lpDenom,
-        amount: provideState.lpAmount
+        amount: provideState.lpAmount,
       });
 
       await dependencies.executionsRepository.update(latestExecution.id, {
-        status: "success",
+        status: executionStatusForCompletion(dependencies.chain.mode),
         lpAmount: provideState.lpAmount,
         delegateTxHash: delegated.txHash,
         errorCode: null,
         errorMessage: null,
-        finishedAt: now
+        finishedAt: now,
       });
       await syncPosition(strategy, user, now);
       await dependencies.strategiesRepository.patch(strategy.id, {
         status: "active",
         lastExecutedAt: now,
         nextEligibleAt: computeNextEligibleAt(now, strategy.cooldownSeconds),
-        pauseReason: null
+        pauseReason: null,
       });
 
       return buildResult(strategy.id, "executed", "success");
@@ -233,10 +240,10 @@ export function createKeeperRunner(dependencies: KeeperDependencies) {
         status: "retryable",
         lpAmount: provideState.lpAmount,
         errorCode: "DELEGATE_FAILED",
-        errorMessage: serializeError(error)
+        errorMessage: serializeError(error),
       });
       await dependencies.strategiesRepository.patch(strategy.id, {
-        status: "partial_lp"
+        status: "partial_lp",
       });
 
       return buildResult(strategy.id, "skipped", "delegate-failed");
@@ -246,11 +253,11 @@ export function createKeeperRunner(dependencies: KeeperDependencies) {
   async function executeActiveStrategy(
     strategy: StrategyRecord,
     user: UserRecord,
-    now: Date
+    now: Date,
   ): Promise<TickResult> {
     const inputBalance = await dependencies.chain.getInputBalance({
       userAddress: user.initiaAddress,
-      denom: strategy.inputDenom
+      denom: strategy.inputDenom,
     });
 
     if (BigInt(inputBalance) < BigInt(strategy.minBalanceAmount)) {
@@ -268,11 +275,11 @@ export function createKeeperRunner(dependencies: KeeperDependencies) {
       errorCode: null,
       errorMessage: null,
       startedAt: now,
-      finishedAt: null
+      finishedAt: null,
     });
 
     await dependencies.strategiesRepository.patch(strategy.id, {
-      status: "executing"
+      status: "executing",
     });
 
     try {
@@ -283,13 +290,13 @@ export function createKeeperRunner(dependencies: KeeperDependencies) {
         amount: execution.inputAmount,
         maxSlippageBps: strategy.maxSlippageBps,
         moduleAddress: strategy.dexModuleAddress,
-        moduleName: strategy.dexModuleName
+        moduleName: strategy.dexModuleName,
       });
 
       await dependencies.executionsRepository.update(execution.id, {
         status: "delegating",
         provideTxHash: provided.txHash,
-        lpAmount: provided.lpAmount
+        lpAmount: provided.lpAmount,
       });
 
       try {
@@ -297,24 +304,24 @@ export function createKeeperRunner(dependencies: KeeperDependencies) {
           userAddress: user.initiaAddress,
           validatorAddress: strategy.validatorAddress,
           lpDenom,
-          amount: provided.lpAmount
+          amount: provided.lpAmount,
         });
 
         await dependencies.executionsRepository.update(execution.id, {
-          status: "success",
+          status: executionStatusForCompletion(dependencies.chain.mode),
           provideTxHash: provided.txHash,
           lpAmount: provided.lpAmount,
           delegateTxHash: delegated.txHash,
           finishedAt: now,
           errorCode: null,
-          errorMessage: null
+          errorMessage: null,
         });
         await syncPosition(strategy, user, now);
         await dependencies.strategiesRepository.patch(strategy.id, {
           status: "active",
           lastExecutedAt: now,
           nextEligibleAt: computeNextEligibleAt(now, strategy.cooldownSeconds),
-          pauseReason: null
+          pauseReason: null,
         });
 
         return buildResult(strategy.id, "executed", "success");
@@ -324,10 +331,10 @@ export function createKeeperRunner(dependencies: KeeperDependencies) {
           provideTxHash: provided.txHash,
           lpAmount: provided.lpAmount,
           errorCode: "DELEGATE_FAILED",
-          errorMessage: serializeError(error)
+          errorMessage: serializeError(error),
         });
         await dependencies.strategiesRepository.patch(strategy.id, {
-          status: "partial_lp"
+          status: "partial_lp",
         });
 
         return buildResult(strategy.id, "skipped", "delegate-failed");
@@ -337,11 +344,11 @@ export function createKeeperRunner(dependencies: KeeperDependencies) {
         status: "failed",
         errorCode: "PROVIDE_FAILED",
         errorMessage: serializeError(error),
-        finishedAt: now
+        finishedAt: now,
       });
       await dependencies.strategiesRepository.patch(strategy.id, {
         status: "active",
-        nextEligibleAt: computeNextEligibleAt(now, strategy.cooldownSeconds)
+        nextEligibleAt: computeNextEligibleAt(now, strategy.cooldownSeconds),
       });
 
       return buildResult(strategy.id, "skipped", "provide-failed");
@@ -350,7 +357,7 @@ export function createKeeperRunner(dependencies: KeeperDependencies) {
 
   async function runStrategy(
     strategy: StrategyRecord,
-    now: Date
+    now: Date,
   ): Promise<TickResult> {
     if (strategy.status !== "active" && strategy.status !== "partial_lp") {
       return buildResult(strategy.id, "skipped", "not-runnable");
@@ -362,7 +369,9 @@ export function createKeeperRunner(dependencies: KeeperDependencies) {
 
     try {
       const user = await dependencies.usersRepository.findById(strategy.userId);
-      const grant = await dependencies.grantsRepository.findByUserId(strategy.userId);
+      const grant = await dependencies.grantsRepository.findByUserId(
+        strategy.userId,
+      );
 
       if (!user) {
         return buildResult(strategy.id, "skipped", "not-runnable");
@@ -370,7 +379,7 @@ export function createKeeperRunner(dependencies: KeeperDependencies) {
 
       if (!isGrantBundleActive(grant, now)) {
         await dependencies.strategiesRepository.patch(strategy.id, {
-          status: "expired"
+          status: "expired",
         });
 
         return buildResult(strategy.id, "skipped", "grant-expired");
@@ -378,7 +387,9 @@ export function createKeeperRunner(dependencies: KeeperDependencies) {
 
       if (strategy.status === "partial_lp") {
         const latestExecution =
-          await dependencies.executionsRepository.findLatestForStrategy(strategy.id);
+          await dependencies.executionsRepository.findLatestForStrategy(
+            strategy.id,
+          );
 
         if (!latestExecution) {
           return buildResult(strategy.id, "skipped", "missing-liquidity");
@@ -397,9 +408,8 @@ export function createKeeperRunner(dependencies: KeeperDependencies) {
     locks,
     async runTick(): Promise<TickResult[]> {
       const now = dependencies.now();
-      const strategies = await dependencies.strategiesRepository.findRunnableStrategies(
-        now
-      );
+      const strategies =
+        await dependencies.strategiesRepository.findRunnableStrategies(now);
       const results: TickResult[] = [];
 
       for (const strategy of strategies) {
@@ -408,6 +418,6 @@ export function createKeeperRunner(dependencies: KeeperDependencies) {
 
       return results;
     },
-    runStrategy
+    runStrategy,
   };
 }

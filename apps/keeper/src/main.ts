@@ -6,7 +6,10 @@ import {
   StrategiesRepository,
   UsersRepository
 } from "@stacker/db";
-import type { KeeperChainClient } from "@stacker/chain";
+import {
+  createDryRunKeeperChainClient,
+  type KeeperChainClient
+} from "@stacker/chain";
 import { loadKeeperConfig } from "./config.js";
 import { runTickJob } from "./jobs/run-tick.js";
 import { createKeeperRunner } from "./runner/keeper-runner.js";
@@ -17,6 +20,7 @@ function createUnimplementedChainClient(): KeeperChainClient {
     "Live keeper chain client is not implemented yet. Phase 5 will add dry-run and live clients.";
 
   return {
+    mode: "live",
     async getInputBalance() {
       throw new Error(message);
     },
@@ -38,6 +42,18 @@ function createUnimplementedChainClient(): KeeperChainClient {
   };
 }
 
+function createChainClient(config: ReturnType<typeof loadKeeperConfig>): KeeperChainClient {
+  if (config.mode === "dry-run") {
+    return createDryRunKeeperChainClient({
+      keeperAddress: config.keeperAddress,
+      lpDenom: config.lpDenom,
+      defaultInputBalance: config.dryRunInputBalance
+    });
+  }
+
+  return createUnimplementedChainClient();
+}
+
 const config = loadKeeperConfig();
 const { client, db } = openDatabase(config.databaseUrl);
 
@@ -50,7 +66,7 @@ const runner = createKeeperRunner({
   grantsRepository: new GrantsRepository(db),
   executionsRepository: new ExecutionsRepository(db),
   positionsRepository: new PositionsRepository(db),
-  chain: createUnimplementedChainClient(),
+  chain: createChainClient(config),
   locks: new StrategyLocks(),
   lpDenom: config.lpDenom
 });

@@ -24,6 +24,7 @@ export const executionStatusEnum = pgEnum("execution_status", [
   "queued",
   "providing",
   "delegating",
+  "simulated",
   "success",
   "failed",
   "retryable"

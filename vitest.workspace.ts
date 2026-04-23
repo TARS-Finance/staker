@@ -7,7 +7,11 @@ export default defineConfig({
         test: {
           name: "stacker",
           environment: "node",
-          include: ["packages/**/test/**/*.test.ts", "apps/**/test/**/*.test.ts"]
+          include: [
+            "packages/**/test/**/*.test.ts",
+            "apps/**/test/**/*.test.ts",
+            "test/**/*.test.ts"
+          ]
         }
       }
     ]
