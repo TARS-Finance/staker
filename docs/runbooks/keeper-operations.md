@@ -47,6 +47,22 @@ This runbook covers local startup, dry-run execution, grant debugging, partial f
   pnpm exec tsx scripts/mock-fe.ts --api-base-url http://127.0.0.1:3000 --config ./scripts/mock-fe.example.json
   ```
 
+## Direct Smoke Path
+
+If you want to prove the chain entrypoint before relying on keeper authz, use:
+
+```bash
+SMOKE_PRIVATE_KEY=replace-me \
+SMOKE_TARGET_POOL_ID=replace-pool-id \
+SMOKE_INPUT_DENOM=uusdc \
+SMOKE_AMOUNT=1000000 \
+SMOKE_VALIDATOR_ADDRESS=initvaloper1... \
+pnpm smoke:testnet:single-asset-provide-delegate
+```
+
+Set `SMOKE_CONFIRM_BROADCAST=true` to submit the tx after reviewing the preview
+output.
+
 ## Live Execution
 
 - `KEEPER_MODE=live` uses the real Initia `RESTClient` and signs with `KEEPER_PRIVATE_KEY`.
