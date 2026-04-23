@@ -231,6 +231,15 @@ export type FakeChainState = {
   provideDelegateResult?: {
     txHash: string;
     lpAmount: string;
+    rewardSnapshot?: {
+      kind: "bonded-locked";
+      stakingAccount: string;
+      metadata: string;
+      releaseTime: string;
+      releaseTimeIso: string;
+      validatorAddress: string;
+      lockedShare: string;
+    } | null;
   };
   providePromise?: Promise<{
     txHash: string;
@@ -286,14 +295,35 @@ export class FakeKeeperChain {
     return this.state.provideResult;
   }
 
-  async singleAssetProvideDelegate() {
+  async singleAssetProvideDelegate(input?: {
+    targetPoolId: string;
+    validatorAddress: string;
+    releaseTime: string;
+  }) {
     this.provideDelegateCalls += 1;
 
     if (!this.state.provideDelegateResult) {
       throw new Error("Missing provide+delegate result");
     }
 
-    return this.state.provideDelegateResult;
+    return {
+      ...this.state.provideDelegateResult,
+      rewardSnapshot:
+        this.state.provideDelegateResult.rewardSnapshot
+        ?? (input
+          ? {
+              kind: "bonded-locked" as const,
+              stakingAccount: "0xdryrunstakingaccount",
+              metadata: input.targetPoolId,
+              releaseTime: input.releaseTime,
+              releaseTimeIso: new Date(
+                Number(input.releaseTime) * 1000
+              ).toISOString(),
+              validatorAddress: input.validatorAddress,
+              lockedShare: this.state.provideDelegateResult.lpAmount
+            }
+          : null)
+    };
   }
 
   async delegateLp() {

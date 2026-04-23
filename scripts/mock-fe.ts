@@ -124,8 +124,18 @@ const strategyStatus = await requestJson<{
     delegatedLp: string;
     delegatedLpKind: "delegated" | "bonded-locked";
   };
+  rewardLock: {
+    releaseTime: string;
+    releaseTimeIso: string;
+    stakingAccount: string;
+  } | null;
 }>(`${apiBaseUrl}/strategies/${createStrategy.strategyId}`);
 
 console.log(`resulting strategy status: ${strategyStatus.status}`);
 console.log(`execution mode: ${strategyStatus.executionMode}`);
 console.log(`delegated lp kind: ${strategyStatus.balances.delegatedLpKind}`);
+
+if (strategyStatus.rewardLock) {
+  console.log(`reward lock release time: ${strategyStatus.rewardLock.releaseTimeIso}`);
+  console.log(`reward lock staking account: ${strategyStatus.rewardLock.stakingAccount}`);
+}

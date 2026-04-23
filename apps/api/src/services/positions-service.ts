@@ -1,6 +1,7 @@
 import { PositionsRepository, StrategiesRepository } from "@stacker/db";
 import type { ApiConfig } from "../config.js";
 import { getDelegatedLpKind } from "./position-mode.js";
+import { parseRewardLockSnapshot } from "./reward-lock.js";
 
 export class PositionsService {
   constructor(
@@ -29,6 +30,7 @@ export class PositionsService {
       lastLpBalance: position.lastLpBalance,
       lastDelegatedLpBalance: position.lastDelegatedLpBalance,
       lastRewardSnapshot: position.lastRewardSnapshot,
+      rewardLock: parseRewardLockSnapshot(position.lastRewardSnapshot),
       lastSyncedAt: position.lastSyncedAt.toISOString()
     }));
   }

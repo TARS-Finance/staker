@@ -2,6 +2,7 @@ import { delegateLp as buildDelegateLpMsg } from "../staking/delegate-lp.js";
 import { provideSingleAssetLiquidity as buildProvideLiquidityMsg } from "../dex/provide-single-asset-liquidity.js";
 import { singleAssetProvideDelegate as buildProvideDelegateMsg } from "../vip/single-asset-provide-delegate.js";
 import type {
+  BondedLockRewardSnapshot,
   DelegateLpRequest,
   DelegateLpResult,
   KeeperChainClient,
@@ -54,6 +55,22 @@ function encodeProvideArgs(input: ProvideSingleAssetLiquidityRequest): string[] 
       "utf8"
     ).toString("base64")
   ];
+}
+
+function buildDryRunRewardSnapshot(
+  input: SingleAssetProvideDelegateRequest
+): BondedLockRewardSnapshot {
+  return {
+    kind: "bonded-locked",
+    stakingAccount: "0xdryrunstakingaccount",
+    metadata: input.targetPoolId,
+    releaseTime: input.releaseTime,
+    releaseTimeIso: new Date(
+      Number(input.releaseTime) * 1000
+    ).toISOString(),
+    validatorAddress: input.validatorAddress,
+    lockedShare: input.amount
+  };
 }
 
 function encodeProvideDelegateArgs(
@@ -223,7 +240,8 @@ export class DryRunKeeperChainClient implements KeeperChainClient {
 
     return {
       txHash: `dry-run-provide-delegate-${++this.txSequence}`,
-      lpAmount: amount.toString()
+      lpAmount: amount.toString(),
+      rewardSnapshot: buildDryRunRewardSnapshot(request)
     };
   }
 

@@ -263,7 +263,16 @@ describe("keeper runner", () => {
     expect(fixture.positionsRepository.list()[0]).toMatchObject({
       lastInputBalance: "500",
       lastLpBalance: "0",
-      lastDelegatedLpBalance: "250"
+      lastDelegatedLpBalance: "250",
+      lastRewardSnapshot: JSON.stringify({
+        kind: "bonded-locked",
+        stakingAccount: "0xdryrunstakingaccount",
+        metadata: "pool-1",
+        releaseTime: "1777032000",
+        releaseTimeIso: "2026-04-24T12:00:00.000Z",
+        validatorAddress: "initvaloper1validator",
+        lockedShare: "250"
+      })
     });
   });
 });

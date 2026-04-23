@@ -159,7 +159,12 @@ export function createKeeperRunner(dependencies: KeeperDependencies) {
     strategy: StrategyRecord,
     user: UserRecord,
     now: Date,
+    rewardSnapshot?: string | null,
   ) {
+    const existingPosition = await dependencies.positionsRepository.findByStrategyId(
+      strategy.id,
+    );
+
     if (executionMode === "single-asset-provide-delegate") {
       if (
         !dependencies.lockStakingModuleAddress
@@ -195,7 +200,8 @@ export function createKeeperRunner(dependencies: KeeperDependencies) {
         lastInputBalance,
         lastLpBalance,
         lastDelegatedLpBalance,
-        lastRewardSnapshot: null,
+        lastRewardSnapshot:
+          rewardSnapshot ?? existingPosition?.lastRewardSnapshot ?? null,
         lastSyncedAt: now,
       });
 
@@ -215,7 +221,7 @@ export function createKeeperRunner(dependencies: KeeperDependencies) {
       lastInputBalance: balances.lastInputBalance,
       lastLpBalance: balances.lastLpBalance,
       lastDelegatedLpBalance: balances.lastDelegatedLpBalance,
-      lastRewardSnapshot: null,
+      lastRewardSnapshot: existingPosition?.lastRewardSnapshot ?? null,
       lastSyncedAt: now,
     });
   }
@@ -368,7 +374,14 @@ export function createKeeperRunner(dependencies: KeeperDependencies) {
           errorCode: null,
           errorMessage: null,
         });
-        await syncPosition(strategy, user, now);
+        await syncPosition(
+          strategy,
+          user,
+          now,
+          provided.rewardSnapshot
+            ? JSON.stringify(provided.rewardSnapshot)
+            : null,
+        );
         await dependencies.strategiesRepository.patch(strategy.id, {
           status: "active",
           lastExecutedAt: now,

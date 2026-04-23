@@ -6,6 +6,7 @@ import {
 } from "@stacker/db";
 import type { ApiConfig } from "../config.js";
 import { getDelegatedLpKind } from "./position-mode.js";
+import { parseRewardLockSnapshot } from "./reward-lock.js";
 
 export type CreateStrategyInput = {
   userId: string;
@@ -71,6 +72,7 @@ export class StrategiesService {
         delegatedLp: position?.lastDelegatedLpBalance ?? "0",
         delegatedLpKind: getDelegatedLpKind(this.config.executionMode)
       },
+      rewardLock: parseRewardLockSnapshot(position?.lastRewardSnapshot ?? null),
       lastExecution: lastExecution
         ? {
             status: lastExecution.status,

@@ -27,9 +27,20 @@ export type SingleAssetProvideDelegateRequest =
     validatorAddress: string;
   };
 
+export type BondedLockRewardSnapshot = {
+  kind: "bonded-locked";
+  stakingAccount: string;
+  metadata: string;
+  releaseTime: string;
+  releaseTimeIso: string;
+  validatorAddress: string;
+  lockedShare: string;
+};
+
 export type SingleAssetProvideDelegateResult = {
   txHash: string;
   lpAmount: string;
+  rewardSnapshot?: BondedLockRewardSnapshot | null;
 };
 
 export type DelegateLpRequest = {

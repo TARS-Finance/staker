@@ -10,6 +10,7 @@ import { delegateLp as buildDelegateLpMsg } from "../staking/delegate-lp.js";
 import { provideSingleAssetLiquidity as buildProvideLiquidityMsg } from "../dex/provide-single-asset-liquidity.js";
 import { singleAssetProvideDelegate as buildProvideDelegateMsg } from "../vip/single-asset-provide-delegate.js";
 import type {
+  BondedLockRewardSnapshot,
   DelegateLpRequest,
   DelegateLpResult,
   KeeperChainClient,
@@ -128,6 +129,18 @@ type BondedLockedDelegation = {
   amount?: unknown;
 };
 
+type TxEventAttribute = {
+  key: string;
+  value: string;
+};
+
+type TxInfoLike = {
+  events?: Array<{
+    type?: string;
+    attributes?: TxEventAttribute[];
+  }>;
+};
+
 function normalizeObjectAddress(value: string) {
   return value.toLowerCase();
 }
@@ -153,6 +166,95 @@ function extractBondedLockedDelegations(value: unknown): BondedLockedDelegation[
   }
 
   return [];
+}
+
+function extractRewardSnapshotFromTxInfo(input: {
+  txInfo: unknown;
+  moduleAddress: string;
+  targetPoolId: string;
+  validatorAddress: string;
+}): BondedLockRewardSnapshot | null {
+  const txInfo =
+    input.txInfo && typeof input.txInfo === "object"
+      ? (input.txInfo as TxInfoLike)
+      : null;
+  const events = txInfo?.events;
+
+  if (!events) {
+    return null;
+  }
+
+  const targetPoolId = normalizeObjectAddress(input.targetPoolId);
+
+  for (const event of events) {
+    const attributes = new Map(
+      (event.attributes ?? []).map((attribute) => [attribute.key, attribute.value])
+    );
+
+    if (
+      attributes.get("type_tag")
+      !== `${input.moduleAddress}::lock_staking::DepositDelegationEvent`
+    ) {
+      continue;
+    }
+
+    const metadata = attributes.get("metadata");
+    const validatorAddress = attributes.get("validator");
+    const stakingAccount = attributes.get("staking_account");
+    const releaseTime = attributes.get("release_time");
+    const lockedShare = attributes.get("locked_share");
+
+    if (
+      !metadata
+      || normalizeObjectAddress(metadata) !== targetPoolId
+      || validatorAddress !== input.validatorAddress
+      || !stakingAccount
+      || !releaseTime
+      || !lockedShare
+    ) {
+      continue;
+    }
+
+    return {
+      kind: "bonded-locked",
+      stakingAccount,
+      metadata,
+      releaseTime,
+      releaseTimeIso: new Date(Number(releaseTime) * 1000).toISOString(),
+      validatorAddress,
+      lockedShare
+    };
+  }
+
+  return null;
+}
+
+async function tryReadRewardSnapshot(input: {
+  rest: RestClientLike;
+  txHash: string;
+  moduleAddress: string;
+  targetPoolId: string;
+  validatorAddress: string;
+}) {
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    try {
+      const txInfo = await input.rest.tx.txInfo(input.txHash);
+      return extractRewardSnapshotFromTxInfo({
+        txInfo,
+        moduleAddress: input.moduleAddress,
+        targetPoolId: input.targetPoolId,
+        validatorAddress: input.validatorAddress
+      });
+    } catch (error) {
+      if (!isNotFoundError(error) || attempt === 4) {
+        return null;
+      }
+
+      await new Promise((resolve) => setTimeout(resolve, 250));
+    }
+  }
+
+  return null;
 }
 
 function extractLpQuoteFromSimulation(input: {
@@ -475,10 +577,18 @@ export class LiveKeeperChainClient implements KeeperChainClient {
       })
     );
     const delegatedDelta = afterDelegatedBalance - beforeDelegatedBalance;
+    const rewardSnapshot = await tryReadRewardSnapshot({
+      rest: this.rest,
+      txHash: broadcast.txhash,
+      moduleAddress: request.moduleAddress,
+      targetPoolId: request.targetPoolId,
+      validatorAddress: request.validatorAddress
+    });
 
     return {
       txHash: broadcast.txhash,
       lpAmount: (delegatedDelta > 0n ? delegatedDelta : quotedLpAmount).toString(),
+      rewardSnapshot,
     };
   }
 

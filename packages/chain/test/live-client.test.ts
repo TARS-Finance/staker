@@ -240,6 +240,24 @@ describe("live keeper chain client", () => {
       raw_log: "",
       logs: []
     }));
+    const txInfo = vi.fn(async () => ({
+      events: [
+        {
+          type: "move",
+          attributes: [
+            {
+              key: "type_tag",
+              value: "0xlock::lock_staking::DepositDelegationEvent"
+            },
+            { key: "staking_account", value: `0x${"4".repeat(64)}` },
+            { key: "metadata", value: pairObjectId },
+            { key: "release_time", value: "1776970386" },
+            { key: "validator", value: validatorAddress },
+            { key: "locked_share", value: "25" }
+          ]
+        }
+      ]
+    }));
     const simulate = vi.fn(async () => ({
       result: {
         events: [
@@ -274,7 +292,7 @@ describe("live keeper chain client", () => {
         tx: {
           simulate,
           broadcast,
-          txInfo: vi.fn()
+          txInfo
         }
       },
       wallet: {
@@ -299,7 +317,16 @@ describe("live keeper chain client", () => {
       })
     ).resolves.toEqual({
       txHash: "provide-delegate-hash",
-      lpAmount: "15"
+      lpAmount: "15",
+      rewardSnapshot: {
+        kind: "bonded-locked",
+        stakingAccount: `0x${"4".repeat(64)}`,
+        metadata: pairObjectId,
+        releaseTime: "1776970386",
+        releaseTimeIso: "2026-04-23T18:53:06.000Z",
+        validatorAddress,
+        lockedShare: "25"
+      }
     });
 
     const provideDelegateTxInput = createAndSignTx.mock.calls[0]?.[0] as {
@@ -322,6 +349,7 @@ describe("live keeper chain client", () => {
       provideDelegateTxInput.msgs[0]?.toData().msgs[0]?.args[5]
     ).toBe(bcs.string().serialize(validatorAddress).toBase64());
     expect(bondedLockedDelegations).toHaveBeenCalledTimes(2);
+    expect(txInfo).toHaveBeenCalledWith("provide-delegate-hash");
     expect(broadcast).toHaveBeenCalledTimes(1);
   });
 

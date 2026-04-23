@@ -302,7 +302,17 @@ describe("stacker api", () => {
         lastInputBalance: "500",
         lastLpBalance: "0",
         lastDelegatedLpBalance: "828440",
-        lastRewardSnapshot: null,
+        lastRewardSnapshot: JSON.stringify({
+          kind: "bonded-locked",
+          stakingAccount:
+            "0x3ae0ed3bacfcd47f69ff2e8bf968adadb2a5fdaa51c8c7809e026fbe2efc4ca",
+          metadata:
+            "0xdbf06c48af3984ec6d9ae8a9aa7dbb0bb1e784aa9b8c4a5681af660cf8558d7d",
+          releaseTime: "1777057735",
+          releaseTimeIso: "2026-04-24T19:08:55.000Z",
+          validatorAddress: "initvaloper1cduny8wdjupu2lhya9npc9j4x5ytn05kt36x0c",
+          lockedShare: "828440"
+        }),
         lastSyncedAt: new Date("2026-04-23T19:08:55.000Z")
       });
 
@@ -320,6 +330,12 @@ describe("stacker api", () => {
           lp: "0",
           delegatedLp: "828440",
           delegatedLpKind: "bonded-locked"
+        },
+        rewardLock: {
+          releaseTime: "1777057735",
+          releaseTimeIso: "2026-04-24T19:08:55.000Z",
+          stakingAccount:
+            "0x3ae0ed3bacfcd47f69ff2e8bf968adadb2a5fdaa51c8c7809e026fbe2efc4ca"
         }
       });
 
@@ -339,7 +355,13 @@ describe("stacker api", () => {
             validatorAddress: "initvaloper1cduny8wdjupu2lhya9npc9j4x5ytn05kt36x0c",
             executionMode: "single-asset-provide-delegate",
             delegatedLpKind: "bonded-locked",
-            lastDelegatedLpBalance: "828440"
+            lastDelegatedLpBalance: "828440",
+            rewardLock: {
+              releaseTime: "1777057735",
+              releaseTimeIso: "2026-04-24T19:08:55.000Z",
+              stakingAccount:
+                "0x3ae0ed3bacfcd47f69ff2e8bf968adadb2a5fdaa51c8c7809e026fbe2efc4ca"
+            }
           }
         ]
       });
