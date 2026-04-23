@@ -1,0 +1,167 @@
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { createApp } from "../src/app.js";
+
+describe("stacker api", () => {
+  let app: Awaited<ReturnType<typeof createApp>>;
+
+  beforeAll(async () => {
+    app = await createApp();
+    await app.ready();
+  });
+
+  beforeEach(async () => {
+    await app.db.execute(`
+      truncate table executions, positions, grants, strategies, users
+      restart identity cascade;
+    `);
+  });
+
+  afterAll(async () => {
+    await app.close();
+  });
+
+  it("registers a user, creates a strategy, prepares and confirms grants, and reads status/history", async () => {
+    const registerResponse = await app.inject({
+      method: "POST",
+      url: "/users/register",
+      payload: {
+        initiaAddress: "init1useraddress"
+      }
+    });
+
+    expect(registerResponse.statusCode).toBe(201);
+
+    const registerBody = registerResponse.json<{
+      userId: string;
+      initiaAddress: string;
+    }>();
+
+    expect(registerBody.initiaAddress).toBe("init1useraddress");
+
+    const strategyResponse = await app.inject({
+      method: "POST",
+      url: "/strategies",
+      payload: {
+        userId: registerBody.userId,
+        inputDenom: "usdc",
+        targetPoolId: "pool-1",
+        validatorAddress: "initvaloper1validator",
+        minBalanceAmount: "100",
+        maxAmountPerRun: "1000",
+        maxSlippageBps: 100,
+        cooldownSeconds: 300
+      }
+    });
+
+    expect(strategyResponse.statusCode).toBe(201);
+
+    const strategyBody = strategyResponse.json<{
+      strategyId: string;
+      status: string;
+    }>();
+
+    expect(strategyBody.status).toBe("grant_pending");
+
+    const prepareResponse = await app.inject({
+      method: "POST",
+      url: "/grants/prepare",
+      payload: {
+        userId: registerBody.userId,
+        strategyId: strategyBody.strategyId
+      }
+    });
+
+    expect(prepareResponse.statusCode).toBe(200);
+
+    const prepareBody = prepareResponse.json<{
+      keeperAddress: string;
+      grants: {
+        move: { "@type": string };
+        staking: { "@type": string };
+        feegrant: { "@type": string };
+      };
+    }>();
+
+    expect(prepareBody.keeperAddress).toBe("init1replacekeeperaddress");
+    expect(prepareBody.grants.move["@type"]).toBe("/cosmos.authz.v1beta1.MsgGrant");
+    expect(prepareBody.grants.staking["@type"]).toBe("/cosmos.authz.v1beta1.MsgGrant");
+    expect(prepareBody.grants.feegrant["@type"]).toBe("/cosmos.feegrant.v1beta1.MsgGrantAllowance");
+
+    const confirmResponse = await app.inject({
+      method: "POST",
+      url: "/grants/confirm",
+      payload: {
+        userId: registerBody.userId,
+        strategyId: strategyBody.strategyId
+      }
+    });
+
+    expect(confirmResponse.statusCode).toBe(200);
+
+    const confirmBody = confirmResponse.json<{
+      strategyId: string;
+      strategyStatus: string;
+      grantStatus: {
+        move: string;
+        staking: string;
+        feegrant: string;
+      };
+    }>();
+
+    expect(confirmBody.strategyStatus).toBe("active");
+    expect(confirmBody.grantStatus).toEqual({
+      move: "active",
+      staking: "active",
+      feegrant: "active"
+    });
+
+    const statusResponse = await app.inject({
+      method: "GET",
+      url: `/strategies/${strategyBody.strategyId}`
+    });
+
+    expect(statusResponse.statusCode).toBe(200);
+
+    const statusBody = statusResponse.json<{
+      strategyId: string;
+      status: string;
+      grantStatus: {
+        move: string;
+        staking: string;
+        feegrant: string;
+        expiresAt: string | null;
+      };
+      balances: {
+        input: string;
+        lp: string;
+        delegatedLp: string;
+      };
+      lastExecution: null;
+    }>();
+
+    expect(statusBody.strategyId).toBe(strategyBody.strategyId);
+    expect(statusBody.status).toBe("active");
+    expect(statusBody.balances).toEqual({
+      input: "0",
+      lp: "0",
+      delegatedLp: "0"
+    });
+    expect(statusBody.lastExecution).toBeNull();
+
+    const positionsResponse = await app.inject({
+      method: "GET",
+      url: `/positions/${registerBody.userId}`
+    });
+
+    expect(positionsResponse.statusCode).toBe(200);
+    expect(positionsResponse.json()).toEqual({ positions: [] });
+
+    const executionsResponse = await app.inject({
+      method: "GET",
+      url: `/strategies/${strategyBody.strategyId}/executions`
+    });
+
+    expect(executionsResponse.statusCode).toBe(200);
+    expect(executionsResponse.json()).toEqual({ executions: [] });
+  });
+});
