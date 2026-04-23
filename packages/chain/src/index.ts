@@ -13,6 +13,11 @@ export {
   createDryRunKeeperChainClient,
   DryRunKeeperChainClient
 } from "./client/dry-run-client.js";
+export {
+  createLiveKeeperChainClient,
+  LiveKeeperChainClient,
+  type CreateLiveKeeperChainClientInput
+} from "./client/live-client.js";
 export type {
   DelegateLpRequest,
   DelegateLpResult,

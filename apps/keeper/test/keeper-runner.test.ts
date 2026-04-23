@@ -144,6 +144,50 @@ describe("keeper runner", () => {
     expect(fixture.chain.provideCalls).toBe(1);
   });
 
+  it("moves to partial lp when provide succeeds but no lp delta is observed yet", async () => {
+    const fixture = createKeeperFixture({
+      chainState: {
+        inputBalance: "500",
+        lpBalance: "0",
+        delegatedLpBalance: "0",
+        provideResult: {
+          txHash: "provide-1",
+          lpAmount: "0"
+        },
+        delegateResult: {
+          txHash: "delegate-1"
+        }
+      }
+    });
+
+    const runner = createKeeperRunner({
+      now: () => now,
+      usersRepository: fixture.usersRepository,
+      strategiesRepository: fixture.strategiesRepository,
+      grantsRepository: fixture.grantsRepository,
+      executionsRepository: fixture.executionsRepository,
+      positionsRepository: fixture.positionsRepository,
+      chain: fixture.chain,
+      locks: new StrategyLocks()
+    });
+
+    const result = await runner.runTick();
+
+    expect(result[0]).toMatchObject({
+      strategyId: "strategy-1",
+      outcome: "skipped",
+      reason: "missing-liquidity"
+    });
+    expect(fixture.chain.delegateCalls).toBe(0);
+    expect(fixture.executionsRepository.list()[0]).toMatchObject({
+      status: "retryable",
+      provideTxHash: "provide-1",
+      lpAmount: "0",
+      errorCode: "LP_NOT_FOUND"
+    });
+    expect(fixture.strategiesRepository.getById("strategy-1")?.status).toBe("partial_lp");
+  });
+
   it("skips a strategy while cooldown is still active", async () => {
     const fixture = createKeeperFixture({
       strategies: [

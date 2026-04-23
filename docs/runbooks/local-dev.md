@@ -48,4 +48,22 @@
   pnpm --filter @stacker/keeper dev
   ```
 
-Those package entrypoints are not implemented yet; this runbook reserves the commands Phase 1 will fill in.
+The keeper supports two modes:
+
+- Dry-run:
+
+  ```bash
+  KEEPER_MODE=dry-run KEEPER_DRY_RUN_INPUT_BALANCE=1000 pnpm --filter @stacker/keeper dev
+  ```
+
+- Live:
+
+  ```bash
+  KEEPER_MODE=live pnpm --filter @stacker/keeper dev
+  ```
+
+Live mode requires:
+
+- `KEEPER_PRIVATE_KEY` to be a hex-encoded Initia private key
+- `KEEPER_ADDRESS` to match the address derived from that key
+- `TARGET_POOL_ID` to be the pair object address used by InitiaDEX

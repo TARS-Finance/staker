@@ -287,6 +287,7 @@ export function createKeeperRunner(dependencies: KeeperDependencies) {
         userAddress: user.initiaAddress,
         targetPoolId: strategy.targetPoolId,
         inputDenom: strategy.inputDenom,
+        lpDenom,
         amount: execution.inputAmount,
         maxSlippageBps: strategy.maxSlippageBps,
         moduleAddress: strategy.dexModuleAddress,
@@ -298,6 +299,21 @@ export function createKeeperRunner(dependencies: KeeperDependencies) {
         provideTxHash: provided.txHash,
         lpAmount: provided.lpAmount,
       });
+
+      if (BigInt(provided.lpAmount) <= 0n) {
+        await dependencies.executionsRepository.update(execution.id, {
+          status: "retryable",
+          provideTxHash: provided.txHash,
+          lpAmount: provided.lpAmount,
+          errorCode: "LP_NOT_FOUND",
+          errorMessage: "Provide tx completed but LP delta was not observed yet.",
+        });
+        await dependencies.strategiesRepository.patch(strategy.id, {
+          status: "partial_lp",
+        });
+
+        return buildResult(strategy.id, "skipped", "missing-liquidity");
+      }
 
       try {
         const delegated = await dependencies.chain.delegateLp({

@@ -8,39 +8,13 @@ import {
 } from "@stacker/db";
 import {
   createDryRunKeeperChainClient,
+  createLiveKeeperChainClient,
   type KeeperChainClient
 } from "@stacker/chain";
 import { loadKeeperConfig } from "./config.js";
 import { runTickJob } from "./jobs/run-tick.js";
 import { createKeeperRunner } from "./runner/keeper-runner.js";
 import { StrategyLocks } from "./runner/locks.js";
-
-function createUnimplementedChainClient(): KeeperChainClient {
-  const message =
-    "Live keeper chain client is not implemented yet. Phase 5 will add dry-run and live clients.";
-
-  return {
-    mode: "live",
-    async getInputBalance() {
-      throw new Error(message);
-    },
-    async getLpBalance() {
-      throw new Error(message);
-    },
-    async getDelegatedLpBalance() {
-      throw new Error(message);
-    },
-    async provideSingleAssetLiquidity() {
-      throw new Error(message);
-    },
-    async delegateLp() {
-      throw new Error(message);
-    },
-    async isTxConfirmed() {
-      throw new Error(message);
-    }
-  };
-}
 
 function createChainClient(config: ReturnType<typeof loadKeeperConfig>): KeeperChainClient {
   if (config.mode === "dry-run") {
@@ -51,7 +25,13 @@ function createChainClient(config: ReturnType<typeof loadKeeperConfig>): KeeperC
     });
   }
 
-  return createUnimplementedChainClient();
+  return createLiveKeeperChainClient({
+    lcdUrl: config.initiaLcdUrl,
+    privateKey: config.keeperPrivateKey,
+    keeperAddress: config.keeperAddress,
+    gasPrices: config.gasPrices,
+    gasAdjustment: config.gasAdjustment
+  });
 }
 
 const config = loadKeeperConfig();

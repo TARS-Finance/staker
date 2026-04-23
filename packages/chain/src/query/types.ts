@@ -4,6 +4,7 @@ export type ProvideSingleAssetLiquidityRequest = {
   userAddress: string;
   targetPoolId: string;
   inputDenom: string;
+  lpDenom: string;
   amount: string;
   maxSlippageBps: string;
   moduleAddress: string;

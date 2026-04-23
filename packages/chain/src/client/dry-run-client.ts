@@ -102,7 +102,7 @@ export class DryRunKeeperChainClient implements KeeperChainClient {
     request: ProvideSingleAssetLiquidityRequest
   ): Promise<ProvideSingleAssetLiquidityResult> {
     const inputKey = userBalanceKey(request.userAddress, request.inputDenom);
-    const lpKey = userBalanceKey(request.userAddress, this.input.lpDenom);
+    const lpKey = userBalanceKey(request.userAddress, request.lpDenom);
     const currentInput = BigInt(await this.getInputBalance({
       userAddress: request.userAddress,
       denom: request.inputDenom

@@ -50,12 +50,12 @@ For safety, Phase 5 adds `KEEPER_MODE=dry-run|live`. Dry-run mode:
 
 ### Negative
 
-- The current live mode is still a placeholder until a real chain client is implemented.
 - Dry-run balances are synthetic and not a price-accurate market simulation.
 - The database is required even for local verification flows.
+- Live mode currently uses `single_asset_provide_liquidity_script` with a null `min_liquidity`, so slippage protection is not yet enforced by the keeper.
 
 ## Follow-Up
 
-- Replace the live placeholder chain client with a real Initia client.
+- Add quoting/simulation so `maxSlippageBps` becomes a real `min_liquidity` guard.
 - Add structured logging and dry-run report storage if operator review needs become heavier.
-- Expand the end-to-end tests once live-mode broadcast and confirmation logic exist.
+- Expand the end-to-end tests once a live-mode smoke environment is available.
