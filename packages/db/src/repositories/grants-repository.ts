@@ -33,8 +33,10 @@ export class GrantsRepository {
   }
 
   async findByUserId(userId: string) {
-    return this.db.query.grants.findFirst({
+    const grant = await this.db.query.grants.findFirst({
       where: eq(grants.userId, userId)
     });
+
+    return grant ?? null;
   }
 }

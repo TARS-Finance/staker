@@ -66,6 +66,21 @@ importers:
         specifier: ^4.1.12
         version: 4.3.6
 
+  apps/keeper:
+    dependencies:
+      '@stacker/chain':
+        specifier: workspace:*
+        version: link:../../packages/chain
+      '@stacker/db':
+        specifier: workspace:*
+        version: link:../../packages/db
+      '@stacker/shared':
+        specifier: workspace:*
+        version: link:../../packages/shared
+      dotenv:
+        specifier: ^17.2.3
+        version: 17.4.2
+
   packages/chain:
     dependencies:
       '@initia/initia.js':

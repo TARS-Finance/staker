@@ -4,3 +4,15 @@ export { buildFeeGrant } from "./authz/build-feegrant.js";
 export { encodeAuthorizedMsgExec } from "./authz/encode-msg-exec.js";
 export { provideSingleAssetLiquidity } from "./dex/provide-single-asset-liquidity.js";
 export { delegateLp } from "./staking/delegate-lp.js";
+export { getInputBalance } from "./query/get-input-balance.js";
+export { getLpBalance } from "./query/get-lp-balance.js";
+export { getDelegatedLpBalance } from "./query/get-delegated-lp-balance.js";
+export { reconcileProvide } from "./reconcile/reconcile-provide.js";
+export { reconcileDelegate } from "./reconcile/reconcile-delegate.js";
+export type {
+  DelegateLpRequest,
+  DelegateLpResult,
+  KeeperChainClient,
+  ProvideSingleAssetLiquidityRequest,
+  ProvideSingleAssetLiquidityResult
+} from "./query/types.js";

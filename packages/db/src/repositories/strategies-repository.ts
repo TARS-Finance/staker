@@ -1,4 +1,4 @@
-import { and, eq, lte } from "drizzle-orm";
+import { and, eq, inArray, isNull, lte, or } from "drizzle-orm";
 import { strategies } from "../../drizzle/schema.js";
 import type { StackerDatabase } from "../client.js";
 
@@ -19,9 +19,11 @@ export class StrategiesRepository {
   }
 
   async findById(id: string) {
-    return this.db.query.strategies.findFirst({
+    const strategy = await this.db.query.strategies.findFirst({
       where: eq(strategies.id, id)
     });
+
+    return strategy ?? null;
   }
 
   async findByUserId(userId: string) {
@@ -30,25 +32,32 @@ export class StrategiesRepository {
     });
   }
 
-  async updateStatus(id: string, status: typeof strategies.$inferInsert.status) {
+  async patch(
+    id: string,
+    values: Partial<typeof strategies.$inferInsert>
+  ) {
     const [strategy] = await this.db
       .update(strategies)
-      .set({ status, updatedAt: new Date() })
+      .set({ ...values, updatedAt: new Date() })
       .where(eq(strategies.id, id))
       .returning();
 
     if (!strategy) {
-      throw new Error(`Failed to update strategy status for ${id}`);
+      throw new Error(`Failed to update strategy ${id}`);
     }
 
     return strategy;
   }
 
-  async findDueActiveStrategies(now: Date) {
+  async updateStatus(id: string, status: typeof strategies.$inferInsert.status) {
+    return this.patch(id, { status });
+  }
+
+  async findRunnableStrategies(now: Date) {
     return this.db.query.strategies.findMany({
       where: and(
-        eq(strategies.status, "active"),
-        lte(strategies.nextEligibleAt, now)
+        inArray(strategies.status, ["active", "partial_lp"]),
+        or(isNull(strategies.nextEligibleAt), lte(strategies.nextEligibleAt, now))
       )
     });
   }

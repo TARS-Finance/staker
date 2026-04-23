@@ -18,7 +18,7 @@ export class ExecutionsRepository {
     return execution;
   }
 
-  async updateStatus(
+  async update(
     id: string,
     values: Partial<typeof executions.$inferInsert>
   ) {
@@ -35,11 +35,20 @@ export class ExecutionsRepository {
     return execution;
   }
 
+  async updateStatus(
+    id: string,
+    values: Partial<typeof executions.$inferInsert>
+  ) {
+    return this.update(id, values);
+  }
+
   async findLatestForStrategy(strategyId: string) {
-    return this.db.query.executions.findFirst({
+    const execution = await this.db.query.executions.findFirst({
       where: eq(executions.strategyId, strategyId),
       orderBy: desc(executions.startedAt)
     });
+
+    return execution ?? null;
   }
 
   async listByStrategyId(strategyId: string) {

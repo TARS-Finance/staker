@@ -19,14 +19,18 @@ export class UsersRepository {
   }
 
   async findById(id: string) {
-    return this.db.query.users.findFirst({
+    const user = await this.db.query.users.findFirst({
       where: eq(users.id, id)
     });
+
+    return user ?? null;
   }
 
   async findByInitiaAddress(initiaAddress: string) {
-    return this.db.query.users.findFirst({
+    const user = await this.db.query.users.findFirst({
       where: eq(users.initiaAddress, initiaAddress)
     });
+
+    return user ?? null;
   }
 }

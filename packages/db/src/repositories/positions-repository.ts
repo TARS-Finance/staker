@@ -32,9 +32,11 @@ export class PositionsRepository {
   }
 
   async findByStrategyId(strategyId: string) {
-    return this.db.query.positions.findFirst({
+    const position = await this.db.query.positions.findFirst({
       where: eq(positions.strategyId, strategyId)
     });
+
+    return position ?? null;
   }
 
   async listByUserId(userId: string) {
