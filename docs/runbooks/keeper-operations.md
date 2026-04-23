@@ -51,9 +51,15 @@ This runbook covers local startup, dry-run execution, grant debugging, partial f
 
 - `KEEPER_MODE=live` uses the real Initia `RESTClient` and signs with `KEEPER_PRIVATE_KEY`.
 - Startup fails fast if the derived wallet address does not match `KEEPER_ADDRESS`.
-- Single-asset provide resolves the input coin metadata with `move.metadata(inputDenom)`, simulates the authz-wrapped call first, derives an LP quote from the simulated `coin_received` events for the user, and then BCS-encodes `min_liquidity` from that quote before broadcast.
-- If the tx confirms but no LP delta is observable yet, the strategy moves to `partial_lp` and the next tick retries delegation only after reconciliation sees the LP tokens.
-- If simulation does not produce a trustworthy LP quote for the configured user and LP denom, the keeper refuses to broadcast the provide tx.
+- `STRATEGY_EXECUTION_MODE=provide-then-delegate` keeps the original two-step flow:
+  1. `dex::single_asset_provide_liquidity_script`
+  2. `mstaking::MsgDelegate`
+- `STRATEGY_EXECUTION_MODE=single-asset-provide-delegate` switches to the direct reward-bearing flow:
+  1. `vip::lock_staking::single_asset_provide_delegate`
+  2. no follow-up delegate tx
+- Both flows resolve the input coin metadata with `move.metadata(inputDenom)`, simulate the authz-wrapped call first, derive an LP quote from the simulated Move `0x1::dex::ProvideEvent`, and then BCS-encode `min_liquidity` from that quote before broadcast.
+- In two-step mode, if the tx confirms but no LP delta is observable yet, the strategy moves to `partial_lp` and the next tick retries delegation only after reconciliation sees the LP tokens.
+- If simulation does not produce a trustworthy LP quote for the configured pool, the keeper refuses to broadcast.
 
 ## Grant Debugging
 
@@ -70,6 +76,11 @@ Review:
 - move grant module/function scope
 - staking grant validator allowlist
 - feegrant allowed messages
+
+When `STRATEGY_EXECUTION_MODE=single-asset-provide-delegate`, the move grant should target:
+- module address: `LOCK_STAKING_MODULE_ADDRESS`
+- module name: `LOCK_STAKING_MODULE_NAME`
+- function name: `single_asset_provide_delegate`
 
 If `grants/confirm` succeeds but the keeper still skips the strategy, inspect:
 - `moveGrantStatus`, `stakingGrantStatus`, `feegrantStatus`
@@ -105,4 +116,5 @@ Recovery sequence:
 5. Confirm positions update as expected after dry-run ticks.
 6. Confirm `TARGET_POOL_ID` is the actual pair object address and that each strategy `inputDenom` resolves via `move.metadata(...)`.
 7. Confirm `KEEPER_ADDRESS` matches the configured private key.
-8. Keep the first live runs limited to small testnet amounts until the quote parser has been validated against your exact pool and denom set.
+8. If using reward mode, confirm `LOCK_STAKING_MODULE_ADDRESS`, `LOCK_STAKING_MODULE_NAME`, and `LOCKUP_SECONDS` are set.
+9. Keep the first live runs limited to small testnet amounts until the quote parser has been validated against your exact pool and denom set.

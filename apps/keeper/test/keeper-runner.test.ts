@@ -214,4 +214,50 @@ describe("keeper runner", () => {
     expect(result).toEqual([]);
     expect(fixture.chain.provideCalls).toBe(0);
   });
+
+  it("uses the combined single-asset provide+delegate path in reward mode", async () => {
+    const fixture = createKeeperFixture({
+      chainState: {
+        inputBalance: "500",
+        lpBalance: "0",
+        delegatedLpBalance: "250",
+        provideDelegateResult: {
+          txHash: "provide-delegate-1",
+          lpAmount: "250"
+        }
+      }
+    });
+
+    const runner = createKeeperRunner({
+      now: () => now,
+      usersRepository: fixture.usersRepository,
+      strategiesRepository: fixture.strategiesRepository,
+      grantsRepository: fixture.grantsRepository,
+      executionsRepository: fixture.executionsRepository,
+      positionsRepository: fixture.positionsRepository,
+      chain: fixture.chain,
+      locks: new StrategyLocks(),
+      executionMode: "single-asset-provide-delegate",
+      lockStakingModuleAddress: "0xlock",
+      lockStakingModuleName: "lock_staking",
+      lockupSeconds: "86400"
+    });
+
+    const result = await runner.runTick();
+
+    expect(result[0]).toMatchObject({
+      strategyId: "strategy-1",
+      outcome: "executed",
+      reason: "success"
+    });
+    expect(fixture.chain.provideDelegateCalls).toBe(1);
+    expect(fixture.chain.provideCalls).toBe(0);
+    expect(fixture.chain.delegateCalls).toBe(0);
+    expect(fixture.executionsRepository.list()[0]).toMatchObject({
+      status: "success",
+      provideTxHash: "provide-delegate-1",
+      delegateTxHash: "provide-delegate-1",
+      lpAmount: "250"
+    });
+  });
 });

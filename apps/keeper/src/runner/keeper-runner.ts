@@ -3,6 +3,7 @@ import {
   reconcileProvide,
   type KeeperChainClient,
   type KeeperMode,
+  type StrategyExecutionMode,
 } from "@stacker/chain";
 import {
   computeNextEligibleAt,
@@ -115,6 +116,10 @@ type KeeperDependencies = {
   chain: KeeperChainClient;
   locks?: StrategyLocks;
   lpDenom?: string;
+  executionMode?: StrategyExecutionMode;
+  lockStakingModuleAddress?: string;
+  lockStakingModuleName?: string;
+  lockupSeconds?: string;
 };
 
 export type TickResult = {
@@ -143,6 +148,8 @@ function buildResult(
 export function createKeeperRunner(dependencies: KeeperDependencies) {
   const locks = dependencies.locks ?? new StrategyLocks();
   const lpDenom = dependencies.lpDenom ?? "ulp";
+  const executionMode =
+    dependencies.executionMode ?? "provide-then-delegate";
   const executionStatusForCompletion = (
     mode: KeeperMode,
   ): "success" | "simulated" => (mode === "dry-run" ? "simulated" : "success");
@@ -283,6 +290,52 @@ export function createKeeperRunner(dependencies: KeeperDependencies) {
     });
 
     try {
+      if (executionMode === "single-asset-provide-delegate") {
+        if (
+          !dependencies.lockStakingModuleAddress
+          || !dependencies.lockStakingModuleName
+          || !dependencies.lockupSeconds
+        ) {
+          throw new Error(
+            "Lock staking execution mode requires module address, module name, and lockup seconds."
+          );
+        }
+
+        const releaseTime = Math.floor(now.getTime() / 1000)
+          + Number(dependencies.lockupSeconds);
+        const provided = await dependencies.chain.singleAssetProvideDelegate({
+          userAddress: user.initiaAddress,
+          targetPoolId: strategy.targetPoolId,
+          inputDenom: strategy.inputDenom,
+          lpDenom,
+          amount: execution.inputAmount,
+          maxSlippageBps: strategy.maxSlippageBps,
+          moduleAddress: dependencies.lockStakingModuleAddress,
+          moduleName: dependencies.lockStakingModuleName,
+          releaseTime: String(releaseTime),
+          validatorAddress: strategy.validatorAddress,
+        });
+
+        await dependencies.executionsRepository.update(execution.id, {
+          status: executionStatusForCompletion(dependencies.chain.mode),
+          provideTxHash: provided.txHash,
+          delegateTxHash: provided.txHash,
+          lpAmount: provided.lpAmount,
+          finishedAt: now,
+          errorCode: null,
+          errorMessage: null,
+        });
+        await syncPosition(strategy, user, now);
+        await dependencies.strategiesRepository.patch(strategy.id, {
+          status: "active",
+          lastExecutedAt: now,
+          nextEligibleAt: computeNextEligibleAt(now, strategy.cooldownSeconds),
+          pauseReason: null,
+        });
+
+        return buildResult(strategy.id, "executed", "success");
+      }
+
       const provided = await dependencies.chain.provideSingleAssetLiquidity({
         userAddress: user.initiaAddress,
         targetPoolId: strategy.targetPoolId,

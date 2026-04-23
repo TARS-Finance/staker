@@ -48,7 +48,11 @@ const runner = createKeeperRunner({
   positionsRepository: new PositionsRepository(db),
   chain: createChainClient(config),
   locks: new StrategyLocks(),
-  lpDenom: config.lpDenom
+  lpDenom: config.lpDenom,
+  executionMode: config.executionMode,
+  lockStakingModuleAddress: config.lockStakingModuleAddress,
+  lockStakingModuleName: config.lockStakingModuleName,
+  lockupSeconds: config.lockupSeconds
 });
 
 const timer = setInterval(async () => {

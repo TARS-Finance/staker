@@ -21,12 +21,26 @@ export class GrantsService {
     const expiresAt = new Date(
       Date.now() + this.config.grantExpiryHours * 60 * 60 * 1000
     );
+    const moveGrantScope =
+      this.config.executionMode === "single-asset-provide-delegate"
+        ? {
+            moduleAddress:
+              this.config.lockStakingModuleAddress ?? this.config.dexModuleAddress,
+            moduleName:
+              this.config.lockStakingModuleName ?? "lock_staking",
+            functionNames: ["single_asset_provide_delegate"]
+          }
+        : {
+            moduleAddress: this.config.dexModuleAddress,
+            moduleName: this.config.dexModuleName,
+            functionNames: ["single_asset_provide_liquidity_script"]
+          };
     const moveGrant = buildMoveGrant({
       granter: user.initiaAddress,
       grantee: this.config.keeperAddress,
-      moduleAddress: this.config.dexModuleAddress,
-      moduleName: this.config.dexModuleName,
-      functionNames: ["single_asset_provide_liquidity_script"],
+      moduleAddress: moveGrantScope.moduleAddress,
+      moduleName: moveGrantScope.moduleName,
+      functionNames: moveGrantScope.functionNames,
       expiresAt
     });
     const stakingGrant = buildStakeGrant({

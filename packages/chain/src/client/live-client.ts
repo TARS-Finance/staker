@@ -1,6 +1,5 @@
 import {
   bcs,
-  Coins,
   RawKey,
   RESTClient,
   type RESTClientConfig,
@@ -9,12 +8,15 @@ import {
 } from "@initia/initia.js";
 import { delegateLp as buildDelegateLpMsg } from "../staking/delegate-lp.js";
 import { provideSingleAssetLiquidity as buildProvideLiquidityMsg } from "../dex/provide-single-asset-liquidity.js";
+import { singleAssetProvideDelegate as buildProvideDelegateMsg } from "../vip/single-asset-provide-delegate.js";
 import type {
   DelegateLpRequest,
   DelegateLpResult,
   KeeperChainClient,
   ProvideSingleAssetLiquidityRequest,
   ProvideSingleAssetLiquidityResult,
+  SingleAssetProvideDelegateRequest,
+  SingleAssetProvideDelegateResult,
 } from "../query/types.js";
 
 type CoinLike = {
@@ -113,18 +115,12 @@ function applySlippageBps(amount: bigint, slippageBps: string) {
   return (amount * (10_000n - bps)) / 10_000n;
 }
 
-function parseCoinAmount(input: string, denom: string) {
-  const coins = Coins.fromString(input);
-  return BigInt(coins.get(denom)?.amount ?? "0");
-}
-
 function extractLpQuoteFromSimulation(input: {
   events: Array<{
     type: string;
     attributes: Array<{ key: string; value: string }>;
   }>;
-  userAddress: string;
-  lpDenom: string;
+  targetPoolId: string;
 }) {
   let lpAmount = 0n;
 
@@ -132,14 +128,19 @@ function extractLpQuoteFromSimulation(input: {
     const attributes = new Map(
       event.attributes.map((attribute) => [attribute.key, attribute.value])
     );
-    const receiver = attributes.get("receiver");
-    const amount = attributes.get("amount");
+    const eventType = attributes.get("type_tag");
+    const liquidityToken = attributes.get("liquidity_token");
+    const liquidity = attributes.get("liquidity");
 
-    if (receiver !== input.userAddress || !amount) {
+    if (
+      eventType !== "0x1::dex::ProvideEvent"
+      || liquidityToken !== input.targetPoolId
+      || !liquidity
+    ) {
       continue;
     }
 
-    lpAmount += parseCoinAmount(amount, input.lpDenom);
+    lpAmount += BigInt(liquidity);
   }
 
   return lpAmount;
@@ -160,6 +161,31 @@ async function queryBalanceByDenom(
 
     throw error;
   }
+}
+
+async function simulateQuotedLpAmount(input: {
+  rest: RestClientLike;
+  wallet: WalletLike;
+  msg: unknown;
+  targetPoolId: string;
+  lpDenom: string;
+}) {
+  const simulation = await input.rest.tx.simulate({
+    msgs: [input.msg],
+    sequence: await input.wallet.sequence(),
+  });
+  const quotedLpAmount = extractLpQuoteFromSimulation({
+    events: simulation.result.events,
+    targetPoolId: input.targetPoolId,
+  });
+
+  if (quotedLpAmount <= 0n) {
+    throw new Error(
+      `Unable to derive a trustworthy LP quote for ${input.lpDenom} from simulation output.`
+    );
+  }
+
+  return quotedLpAmount;
 }
 
 export class LiveKeeperChainClient implements KeeperChainClient {
@@ -235,21 +261,13 @@ export class LiveKeeperChainClient implements KeeperChainClient {
         bcs.option(bcs.u64()).serialize(null).toBase64(),
       ],
     });
-    const simulation = await this.rest.tx.simulate({
-      msgs: [simulationMsg],
-      sequence: await this.wallet.sequence(),
-    });
-    const quotedLpAmount = extractLpQuoteFromSimulation({
-      events: simulation.result.events,
-      userAddress: request.userAddress,
+    const quotedLpAmount = await simulateQuotedLpAmount({
+      rest: this.rest,
+      wallet: this.wallet,
+      msg: simulationMsg,
+      targetPoolId: request.targetPoolId,
       lpDenom: request.lpDenom,
     });
-
-    if (quotedLpAmount <= 0n) {
-      throw new Error(
-        `Unable to derive a trustworthy LP quote for ${request.lpDenom} from simulation output.`
-      );
-    }
 
     const minLiquidity = applySlippageBps(
       quotedLpAmount,
@@ -288,6 +306,82 @@ export class LiveKeeperChainClient implements KeeperChainClient {
     return {
       txHash: broadcast.txhash,
       lpAmount: (afterLpBalance - beforeLpBalance).toString(),
+    };
+  }
+
+  async singleAssetProvideDelegate(
+    request: SingleAssetProvideDelegateRequest
+  ): Promise<SingleAssetProvideDelegateResult> {
+    const beforeDelegatedBalance = BigInt(
+      await this.getDelegatedLpBalance({
+        userAddress: request.userAddress,
+        validatorAddress: request.validatorAddress,
+        lpDenom: request.lpDenom,
+      })
+    );
+    const inputCoinMetadata = await this.rest.move.metadata(request.inputDenom);
+    const simulationMsg = buildProvideDelegateMsg({
+      grantee: this.keeperAddress,
+      userAddress: request.userAddress,
+      moduleAddress: request.moduleAddress,
+      moduleName: request.moduleName,
+      args: [
+        bcs.object().serialize(request.targetPoolId).toBase64(),
+        bcs.object().serialize(inputCoinMetadata).toBase64(),
+        bcs.u64().serialize(BigInt(request.amount)).toBase64(),
+        bcs.option(bcs.u64()).serialize(null).toBase64(),
+        bcs.u64().serialize(BigInt(request.releaseTime)).toBase64(),
+        bcs.string().serialize(request.validatorAddress).toBase64(),
+      ],
+    });
+    const quotedLpAmount = await simulateQuotedLpAmount({
+      rest: this.rest,
+      wallet: this.wallet,
+      msg: simulationMsg,
+      targetPoolId: request.targetPoolId,
+      lpDenom: request.lpDenom,
+    });
+    const minLiquidity = applySlippageBps(
+      quotedLpAmount,
+      request.maxSlippageBps
+    );
+    const msg = buildProvideDelegateMsg({
+      grantee: this.keeperAddress,
+      userAddress: request.userAddress,
+      moduleAddress: request.moduleAddress,
+      moduleName: request.moduleName,
+      args: [
+        bcs.object().serialize(request.targetPoolId).toBase64(),
+        bcs.object().serialize(inputCoinMetadata).toBase64(),
+        bcs.u64().serialize(BigInt(request.amount)).toBase64(),
+        bcs.option(bcs.u64()).serialize(minLiquidity).toBase64(),
+        bcs.u64().serialize(BigInt(request.releaseTime)).toBase64(),
+        bcs.string().serialize(request.validatorAddress).toBase64(),
+      ],
+    });
+    const signedTx = await this.wallet.createAndSignTx({
+      msgs: [msg],
+    });
+    const broadcast = await this.rest.tx.broadcast(signedTx);
+
+    if (isBroadcastError(broadcast)) {
+      throw new Error(
+        `Provide+delegate tx failed (${broadcast.code}): ${broadcast.raw_log}`
+      );
+    }
+
+    const afterDelegatedBalance = BigInt(
+      await this.getDelegatedLpBalance({
+        userAddress: request.userAddress,
+        validatorAddress: request.validatorAddress,
+        lpDenom: request.lpDenom,
+      })
+    );
+    const delegatedDelta = afterDelegatedBalance - beforeDelegatedBalance;
+
+    return {
+      txHash: broadcast.txhash,
+      lpAmount: (delegatedDelta > 0n ? delegatedDelta : quotedLpAmount).toString(),
     };
   }
 

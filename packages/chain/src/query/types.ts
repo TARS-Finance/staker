@@ -1,6 +1,9 @@
 export type KeeperMode = "dry-run" | "live";
+export type StrategyExecutionMode =
+  | "provide-then-delegate"
+  | "single-asset-provide-delegate";
 
-export type ProvideSingleAssetLiquidityRequest = {
+type SingleAssetProvideBaseRequest = {
   userAddress: string;
   targetPoolId: string;
   inputDenom: string;
@@ -11,7 +14,20 @@ export type ProvideSingleAssetLiquidityRequest = {
   moduleName: string;
 };
 
+export type ProvideSingleAssetLiquidityRequest = SingleAssetProvideBaseRequest;
+
 export type ProvideSingleAssetLiquidityResult = {
+  txHash: string;
+  lpAmount: string;
+};
+
+export type SingleAssetProvideDelegateRequest =
+  SingleAssetProvideBaseRequest & {
+    releaseTime: string;
+    validatorAddress: string;
+  };
+
+export type SingleAssetProvideDelegateResult = {
   txHash: string;
   lpAmount: string;
 };
@@ -45,6 +61,9 @@ export interface KeeperChainClient {
   provideSingleAssetLiquidity(
     input: ProvideSingleAssetLiquidityRequest
   ): Promise<ProvideSingleAssetLiquidityResult>;
+  singleAssetProvideDelegate(
+    input: SingleAssetProvideDelegateRequest
+  ): Promise<SingleAssetProvideDelegateResult>;
   delegateLp(input: DelegateLpRequest): Promise<DelegateLpResult>;
   isTxConfirmed(txHash: string): Promise<boolean>;
 }

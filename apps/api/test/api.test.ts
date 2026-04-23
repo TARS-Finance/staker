@@ -164,4 +164,90 @@ describe("stacker api", () => {
     expect(executionsResponse.statusCode).toBe(200);
     expect(executionsResponse.json()).toEqual({ executions: [] });
   });
+
+  it("prepares a lock-staking move grant when reward mode is enabled", async () => {
+    const rewardApp = await createApp({
+      config: {
+        executionMode: "single-asset-provide-delegate",
+        lockStakingModuleAddress:
+          "0x81c3ea419d2fd3a27971021d9dd3cc708def05e5d6a09d39b2f1f9ba18312264",
+        lockStakingModuleName: "lock_staking"
+      }
+    });
+
+    try {
+      await rewardApp.ready();
+      await rewardApp.db.execute(`
+        truncate table executions, positions, grants, strategies, users
+        restart identity cascade;
+      `);
+
+      const registerResponse = await rewardApp.inject({
+        method: "POST",
+        url: "/users/register",
+        payload: {
+          initiaAddress: "init1rewarduseraddress"
+        }
+      });
+      const registerBody = registerResponse.json<{
+        userId: string;
+      }>();
+
+      const strategyResponse = await rewardApp.inject({
+        method: "POST",
+        url: "/strategies",
+        payload: {
+          userId: registerBody.userId,
+          inputDenom: "usdc",
+          targetPoolId: "pool-1",
+          validatorAddress: "initvaloper1validator",
+          minBalanceAmount: "100",
+          maxAmountPerRun: "1000",
+          maxSlippageBps: 100,
+          cooldownSeconds: 300
+        }
+      });
+      const strategyBody = strategyResponse.json<{
+        strategyId: string;
+      }>();
+
+      const prepareResponse = await rewardApp.inject({
+        method: "POST",
+        url: "/grants/prepare",
+        payload: {
+          userId: registerBody.userId,
+          strategyId: strategyBody.strategyId
+        }
+      });
+
+      expect(prepareResponse.statusCode).toBe(200);
+
+      const prepareBody = prepareResponse.json<{
+        grants: {
+          move: {
+            grant: {
+              authorization: {
+                items: Array<{
+                  module_address: string;
+                  module_name: string;
+                  function_names: string[];
+                }>;
+              };
+            };
+          };
+        };
+      }>();
+
+      expect(prepareBody.grants.move.grant.authorization.items).toEqual([
+        {
+          module_address:
+            "0x81c3ea419d2fd3a27971021d9dd3cc708def05e5d6a09d39b2f1f9ba18312264",
+          module_name: "lock_staking",
+          function_names: ["single_asset_provide_delegate"]
+        }
+      ]);
+    } finally {
+      await rewardApp.close();
+    }
+  });
 });

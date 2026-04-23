@@ -227,6 +227,10 @@ export type FakeChainState = {
     txHash: string;
     lpAmount: string;
   };
+  provideDelegateResult?: {
+    txHash: string;
+    lpAmount: string;
+  };
   providePromise?: Promise<{
     txHash: string;
     lpAmount: string;
@@ -242,6 +246,7 @@ export type FakeChainState = {
 export class FakeKeeperChain {
   readonly mode = "live" as const;
   provideCalls = 0;
+  provideDelegateCalls = 0;
   delegateCalls = 0;
 
   constructor(public readonly state: FakeChainState) {}
@@ -274,6 +279,16 @@ export class FakeKeeperChain {
     }
 
     return this.state.provideResult;
+  }
+
+  async singleAssetProvideDelegate() {
+    this.provideDelegateCalls += 1;
+
+    if (!this.state.provideDelegateResult) {
+      throw new Error("Missing provide+delegate result");
+    }
+
+    return this.state.provideDelegateResult;
   }
 
   async delegateLp() {

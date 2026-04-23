@@ -9,7 +9,13 @@ const environmentSchema = z.object({
   KEEPER_ADDRESS: z.string().min(1),
   TARGET_POOL_ID: z.string().min(1),
   DEX_MODULE_ADDRESS: z.string().min(1),
-  DEX_MODULE_NAME: z.string().min(1)
+  DEX_MODULE_NAME: z.string().min(1),
+  STRATEGY_EXECUTION_MODE: z
+    .enum(["provide-then-delegate", "single-asset-provide-delegate"])
+    .optional(),
+  LOCK_STAKING_MODULE_ADDRESS: z.string().min(1).optional(),
+  LOCK_STAKING_MODULE_NAME: z.string().min(1).optional(),
+  LOCKUP_SECONDS: z.string().min(1).optional()
 });
 
 export function parseEnvironment(
@@ -33,7 +39,11 @@ export function parseEnvironment(
     keeperAddress: result.data.KEEPER_ADDRESS,
     targetPoolId: result.data.TARGET_POOL_ID,
     dexModuleAddress: result.data.DEX_MODULE_ADDRESS,
-    dexModuleName: result.data.DEX_MODULE_NAME
+    dexModuleName: result.data.DEX_MODULE_NAME,
+    strategyExecutionMode: result.data.STRATEGY_EXECUTION_MODE,
+    lockStakingModuleAddress: result.data.LOCK_STAKING_MODULE_ADDRESS,
+    lockStakingModuleName: result.data.LOCK_STAKING_MODULE_NAME,
+    lockupSeconds: result.data.LOCKUP_SECONDS
   };
 }
 

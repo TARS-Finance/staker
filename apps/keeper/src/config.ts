@@ -6,8 +6,12 @@ export type KeeperConfig = {
   initiaLcdUrl: string;
   keeperPrivateKey: string;
   keeperAddress: string;
+  executionMode: "provide-then-delegate" | "single-asset-provide-delegate";
   dexModuleAddress: string;
   dexModuleName: string;
+  lockStakingModuleAddress?: string;
+  lockStakingModuleName?: string;
+  lockupSeconds?: string;
   lpDenom: string;
   mode: "dry-run" | "live";
   dryRunInputBalance: string;
@@ -28,8 +32,12 @@ export function loadKeeperConfig(
     initiaLcdUrl: environment.initiaLcdUrl,
     keeperPrivateKey: environment.keeperPrivateKey,
     keeperAddress: environment.keeperAddress,
+    executionMode: environment.strategyExecutionMode ?? "provide-then-delegate",
     dexModuleAddress: environment.dexModuleAddress,
     dexModuleName: environment.dexModuleName,
+    lockStakingModuleAddress: environment.lockStakingModuleAddress,
+    lockStakingModuleName: environment.lockStakingModuleName ?? "lock_staking",
+    lockupSeconds: environment.lockupSeconds,
     lpDenom: process.env.LP_DENOM ?? "ulp",
     mode: process.env.KEEPER_MODE === "live" ? "live" : "dry-run",
     dryRunInputBalance: process.env.KEEPER_DRY_RUN_INPUT_BALANCE ?? "0",

@@ -4,6 +4,7 @@ export { buildFeeGrant } from "./authz/build-feegrant.js";
 export { encodeAuthorizedMsgExec } from "./authz/encode-msg-exec.js";
 export { provideSingleAssetLiquidity } from "./dex/provide-single-asset-liquidity.js";
 export { delegateLp } from "./staking/delegate-lp.js";
+export { singleAssetProvideDelegate } from "./vip/single-asset-provide-delegate.js";
 export { getInputBalance } from "./query/get-input-balance.js";
 export { getLpBalance } from "./query/get-lp-balance.js";
 export { getDelegatedLpBalance } from "./query/get-delegated-lp-balance.js";
@@ -24,5 +25,8 @@ export type {
   KeeperChainClient,
   KeeperMode,
   ProvideSingleAssetLiquidityRequest,
-  ProvideSingleAssetLiquidityResult
+  ProvideSingleAssetLiquidityResult,
+  SingleAssetProvideDelegateRequest,
+  SingleAssetProvideDelegateResult,
+  StrategyExecutionMode
 } from "./query/types.js";

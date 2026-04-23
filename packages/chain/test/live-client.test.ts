@@ -84,10 +84,11 @@ describe("live keeper chain client", () => {
       result: {
         events: [
           {
-            type: "coin_received",
+            type: "move",
             attributes: [
-              { key: "receiver", value: "init1useraddress" },
-              { key: "amount", value: "20ulp" }
+              { key: "type_tag", value: "0x1::dex::ProvideEvent" },
+              { key: "liquidity_token", value: pairObjectId },
+              { key: "liquidity", value: "20" }
             ]
           }
         ]
@@ -156,6 +157,109 @@ describe("live keeper chain client", () => {
     expect(broadcast).toHaveBeenCalledTimes(1);
   });
 
+  it("signs and broadcasts an authz-wrapped single-asset provide+delegate tx", async () => {
+    const delegatedBalances = vi
+      .fn()
+      .mockResolvedValueOnce({
+        balance: {
+          get: (denom: string) =>
+            denom === "ulp" ? { amount: "10", denom } : undefined
+        }
+      })
+      .mockResolvedValueOnce({
+        balance: {
+          get: (denom: string) =>
+            denom === "ulp" ? { amount: "25", denom } : undefined
+        }
+      });
+    const broadcast = vi.fn(async () => ({
+      txhash: "provide-delegate-hash",
+      raw_log: "",
+      logs: []
+    }));
+    const simulate = vi.fn(async () => ({
+      result: {
+        events: [
+          {
+            type: "move",
+            attributes: [
+              { key: "type_tag", value: "0x1::dex::ProvideEvent" },
+              { key: "liquidity_token", value: pairObjectId },
+              { key: "liquidity", value: "20" }
+            ]
+          }
+        ]
+      }
+    }));
+    const createAndSignTx = vi.fn(async (input: unknown) => input);
+
+    const client = createLiveKeeperChainClient({
+      lcdUrl: "https://rest.testnet.initia.xyz",
+      privateKey: "1".repeat(64),
+      keeperAddress: "init1keeperaddress",
+      restClient: {
+        bank: {
+          balanceByDenom: vi.fn(async () => ({ amount: "0", denom: "ulp" }))
+        },
+        move: {
+          metadata: vi.fn(async () => coinMetadataObjectId)
+        },
+        mstaking: {
+          delegation: delegatedBalances
+        },
+        tx: {
+          simulate,
+          broadcast,
+          txInfo: vi.fn()
+        }
+      },
+      wallet: {
+        accAddress: "init1keeperaddress",
+        createAndSignTx,
+        sequence: vi.fn(async () => 7)
+      }
+    });
+
+    await expect(
+      client.singleAssetProvideDelegate({
+        userAddress: "init1useraddress",
+        targetPoolId: pairObjectId,
+        inputDenom: "usdc",
+        lpDenom: "ulp",
+        amount: "250",
+        maxSlippageBps: "100",
+        moduleAddress: "0xlock",
+        moduleName: "lock_staking",
+        releaseTime: "1776970386",
+        validatorAddress: "initvaloper1validator"
+      })
+    ).resolves.toEqual({
+      txHash: "provide-delegate-hash",
+      lpAmount: "15"
+    });
+
+    const provideDelegateTxInput = createAndSignTx.mock.calls[0]?.[0] as {
+      msgs: Array<{
+        toData(): {
+          "@type": string;
+          msgs: Array<{ args: string[] }>;
+        };
+      }>;
+    };
+
+    expect(simulate).toHaveBeenCalledTimes(1);
+    expect(provideDelegateTxInput.msgs[0]?.toData()["@type"]).toBe(
+      "/cosmos.authz.v1beta1.MsgExec"
+    );
+    expect(
+      provideDelegateTxInput.msgs[0]?.toData().msgs[0]?.args[4]
+    ).toBe(bcs.u64().serialize(1776970386n).toBase64());
+    expect(
+      provideDelegateTxInput.msgs[0]?.toData().msgs[0]?.args[5]
+    ).toBe(bcs.string().serialize("initvaloper1validator").toBase64());
+    expect(broadcast).toHaveBeenCalledTimes(1);
+  });
+
   it("refuses to broadcast a provide tx when simulation cannot derive an lp quote", async () => {
     const broadcast = vi.fn(async () => ({
       txhash: "provide-hash",
@@ -166,10 +270,11 @@ describe("live keeper chain client", () => {
       result: {
         events: [
           {
-            type: "coin_received",
+            type: "move",
             attributes: [
-              { key: "receiver", value: "init1differentuser" },
-              { key: "amount", value: "20ulp" }
+              { key: "type_tag", value: "0x1::dex::ProvideEvent" },
+              { key: "liquidity_token", value: `0x${"3".repeat(64)}` },
+              { key: "liquidity", value: "20" }
             ]
           }
         ]

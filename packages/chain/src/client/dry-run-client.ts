@@ -1,11 +1,14 @@
 import { delegateLp as buildDelegateLpMsg } from "../staking/delegate-lp.js";
 import { provideSingleAssetLiquidity as buildProvideLiquidityMsg } from "../dex/provide-single-asset-liquidity.js";
+import { singleAssetProvideDelegate as buildProvideDelegateMsg } from "../vip/single-asset-provide-delegate.js";
 import type {
   DelegateLpRequest,
   DelegateLpResult,
   KeeperChainClient,
   ProvideSingleAssetLiquidityRequest,
-  ProvideSingleAssetLiquidityResult
+  ProvideSingleAssetLiquidityResult,
+  SingleAssetProvideDelegateRequest,
+  SingleAssetProvideDelegateResult
 } from "../query/types.js";
 
 type DryRunInput = {
@@ -39,6 +42,24 @@ function encodeProvideArgs(input: ProvideSingleAssetLiquidityRequest): string[] 
         inputDenom: input.inputDenom,
         amount: input.amount,
         maxSlippageBps: input.maxSlippageBps
+      }),
+      "utf8"
+    ).toString("base64")
+  ];
+}
+
+function encodeProvideDelegateArgs(
+  input: SingleAssetProvideDelegateRequest
+): string[] {
+  return [
+    Buffer.from(
+      JSON.stringify({
+        targetPoolId: input.targetPoolId,
+        inputDenom: input.inputDenom,
+        amount: input.amount,
+        maxSlippageBps: input.maxSlippageBps,
+        releaseTime: input.releaseTime,
+        validatorAddress: input.validatorAddress
       }),
       "utf8"
     ).toString("base64")
@@ -129,6 +150,46 @@ export class DryRunKeeperChainClient implements KeeperChainClient {
 
     return {
       txHash,
+      lpAmount: amount.toString()
+    };
+  }
+
+  async singleAssetProvideDelegate(
+    request: SingleAssetProvideDelegateRequest
+  ): Promise<SingleAssetProvideDelegateResult> {
+    const inputKey = userBalanceKey(request.userAddress, request.inputDenom);
+    const delegatedKey = delegatedBalanceKey(
+      request.userAddress,
+      request.validatorAddress,
+      request.lpDenom
+    );
+    const currentInput = BigInt(await this.getInputBalance({
+      userAddress: request.userAddress,
+      denom: request.inputDenom
+    }));
+    const amount = BigInt(request.amount);
+
+    if (currentInput < amount) {
+      throw new Error("Insufficient dry-run balance");
+    }
+
+    this.balances.set(inputKey, currentInput - amount);
+    this.balances.set(
+      delegatedKey,
+      (this.balances.get(delegatedKey) ?? 0n) + amount
+    );
+    this.plannedMessages.push(
+      buildProvideDelegateMsg({
+        grantee: this.input.keeperAddress,
+        userAddress: request.userAddress,
+        moduleAddress: request.moduleAddress,
+        moduleName: request.moduleName,
+        args: encodeProvideDelegateArgs(request)
+      }).toData()
+    );
+
+    return {
+      txHash: `dry-run-provide-delegate-${++this.txSequence}`,
       lpAmount: amount.toString()
     };
   }
