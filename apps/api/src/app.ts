@@ -1,4 +1,5 @@
 import Fastify, { type FastifyInstance } from "fastify";
+import { RESTClient } from "@initia/initia.js";
 import {
   ExecutionsRepository,
   GrantsRepository,
@@ -16,6 +17,10 @@ import { positionsRoutes } from "./routes/positions.js";
 import { strategiesRoutes } from "./routes/strategies.js";
 import { usersRoutes } from "./routes/users.js";
 import { ExecutionsService } from "./services/executions-service.js";
+import {
+  type GrantVerifier,
+  InitiaGrantVerifier
+} from "./services/grant-verifier.js";
 import { GrantsService } from "./services/grants-service.js";
 import { PositionsService } from "./services/positions-service.js";
 import { StrategiesService } from "./services/strategies-service.js";
@@ -37,7 +42,11 @@ declare module "fastify" {
   }
 }
 
-function createServices(db: StackerDatabase, config: ApiConfig): AppServices {
+function createServices(
+  db: StackerDatabase,
+  config: ApiConfig,
+  grantVerifier: GrantVerifier
+): AppServices {
   const usersRepository = new UsersRepository(db);
   const strategiesRepository = new StrategiesRepository(db);
   const grantsRepository = new GrantsRepository(db);
@@ -57,7 +66,8 @@ function createServices(db: StackerDatabase, config: ApiConfig): AppServices {
       grantsRepository,
       strategiesRepository,
       usersRepository,
-      config
+      config,
+      grantVerifier
     ),
     positions: new PositionsService(positionsRepository, strategiesRepository),
     executions: new ExecutionsService(executionsRepository)
@@ -67,6 +77,7 @@ function createServices(db: StackerDatabase, config: ApiConfig): AppServices {
 export async function createApp(
   options: {
     config?: Partial<ApiConfig>;
+    grantVerifier?: GrantVerifier;
     logger?: boolean;
   } = {}
 ): Promise<FastifyInstance> {
@@ -78,9 +89,12 @@ export async function createApp(
   const app = Fastify({
     logger: options.logger ?? false
   });
+  const grantVerifier =
+    options.grantVerifier
+    ?? new InitiaGrantVerifier(new RESTClient(config.initiaLcdUrl));
 
   app.decorate("db", db);
-  app.decorate("services", createServices(db, config));
+  app.decorate("services", createServices(db, config, grantVerifier));
   app.decorate("stackerConfig", config);
 
   app.addHook("onClose", async () => {

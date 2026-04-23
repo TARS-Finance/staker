@@ -4,6 +4,7 @@ import {
   PositionsRepository,
   StrategiesRepository
 } from "@stacker/db";
+import { canTransitionStrategyStatus } from "@stacker/shared";
 import type { ApiConfig } from "../config.js";
 import { getDelegatedLpKind } from "./position-mode.js";
 import { parseRewardLockSnapshot } from "./reward-lock.js";
@@ -82,5 +83,45 @@ export class StrategiesService {
           }
         : null
     };
+  }
+
+  async pause(strategyId: string) {
+    const strategy = await this.strategiesRepository.findById(strategyId);
+
+    if (!strategy) {
+      return null;
+    }
+
+    if (
+      strategy.status !== "paused"
+      && !canTransitionStrategyStatus(strategy.status, "paused")
+    ) {
+      return null;
+    }
+
+    return this.strategiesRepository.patch(strategyId, {
+      status: "paused",
+      pauseReason: "user-requested"
+    });
+  }
+
+  async resume(strategyId: string) {
+    const strategy = await this.strategiesRepository.findById(strategyId);
+
+    if (!strategy) {
+      return null;
+    }
+
+    if (
+      strategy.status !== "active"
+      && !canTransitionStrategyStatus(strategy.status, "active")
+    ) {
+      return null;
+    }
+
+    return this.strategiesRepository.patch(strategyId, {
+      status: "active",
+      pauseReason: null
+    });
   }
 }

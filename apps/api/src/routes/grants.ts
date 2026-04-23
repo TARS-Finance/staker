@@ -44,12 +44,23 @@ export async function grantsRoutes(app: FastifyInstance) {
       parsed.data.strategyId
     );
 
-    if (!confirmed) {
+    if (confirmed.kind === "not_found") {
       return reply.status(404).send({
         error: "Grant not found"
       });
     }
 
-    return reply.send(confirmed);
+    if (confirmed.kind === "verification_failed") {
+      return reply.status(409).send({
+        error: "Grant verification failed",
+        missing: confirmed.missing
+      });
+    }
+
+    return reply.send({
+      strategyId: confirmed.strategyId,
+      strategyStatus: confirmed.strategyStatus,
+      grantStatus: confirmed.grantStatus
+    });
   });
 }

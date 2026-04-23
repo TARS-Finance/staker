@@ -11,6 +11,12 @@ describe("stacker api", () => {
         lockStakingModuleAddress: "0xlock",
         lockStakingModuleName: "lock_staking",
         lockupSeconds: "86400"
+      },
+      grantVerifier: {
+        verify: async () => ({
+          moveGrantActive: true,
+          feegrantActive: true
+        })
       }
     });
     await app.ready();
@@ -188,6 +194,12 @@ describe("stacker api", () => {
           "0x81c3ea419d2fd3a27971021d9dd3cc708def05e5d6a09d39b2f1f9ba18312264",
         lockStakingModuleName: "lock_staking",
         lockupSeconds: "86400"
+      },
+      grantVerifier: {
+        verify: async () => ({
+          moveGrantActive: true,
+          feegrantActive: true
+        })
       }
     });
 
@@ -321,6 +333,12 @@ describe("stacker api", () => {
           "0x81c3ea419d2fd3a27971021d9dd3cc708def05e5d6a09d39b2f1f9ba18312264",
         lockStakingModuleName: "lock_staking",
         lockupSeconds: "86400"
+      },
+      grantVerifier: {
+        verify: async () => ({
+          moveGrantActive: true,
+          feegrantActive: true
+        })
       }
     });
 
@@ -428,6 +446,278 @@ describe("stacker api", () => {
       });
     } finally {
       await rewardApp.close();
+    }
+  });
+
+  it("pauses and resumes an active strategy", async () => {
+    const registerResponse = await app.inject({
+      method: "POST",
+      url: "/users/register",
+      payload: {
+        initiaAddress: "init1pauseuseraddress"
+      }
+    });
+    const registerBody = registerResponse.json<{ userId: string }>();
+
+    const strategyResponse = await app.inject({
+      method: "POST",
+      url: "/strategies",
+      payload: {
+        userId: registerBody.userId,
+        inputDenom: "usdc",
+        targetPoolId: "pool-pause",
+        validatorAddress: "initvaloper1validator",
+        minBalanceAmount: "1",
+        maxAmountPerRun: "1000",
+        maxSlippageBps: 100,
+        cooldownSeconds: 300
+      }
+    });
+    const strategyBody = strategyResponse.json<{ strategyId: string }>();
+
+    await app.inject({
+      method: "POST",
+      url: "/grants/prepare",
+      payload: {
+        userId: registerBody.userId,
+        strategyId: strategyBody.strategyId
+      }
+    });
+
+    await app.inject({
+      method: "POST",
+      url: "/grants/confirm",
+      payload: {
+        userId: registerBody.userId,
+        strategyId: strategyBody.strategyId
+      }
+    });
+
+    const pauseResponse = await app.inject({
+      method: "POST",
+      url: `/strategies/${strategyBody.strategyId}/pause`
+    });
+
+    expect(pauseResponse.statusCode).toBe(200);
+    expect(pauseResponse.json()).toEqual({
+      strategyId: strategyBody.strategyId,
+      status: "paused"
+    });
+
+    const pausedStatusResponse = await app.inject({
+      method: "GET",
+      url: `/strategies/${strategyBody.strategyId}`
+    });
+
+    expect(pausedStatusResponse.statusCode).toBe(200);
+    expect(
+      pausedStatusResponse.json<{
+        status: string;
+      }>().status
+    ).toBe("paused");
+
+    const resumeResponse = await app.inject({
+      method: "POST",
+      url: `/strategies/${strategyBody.strategyId}/resume`
+    });
+
+    expect(resumeResponse.statusCode).toBe(200);
+    expect(resumeResponse.json()).toEqual({
+      strategyId: strategyBody.strategyId,
+      status: "active"
+    });
+
+    const resumedStatusResponse = await app.inject({
+      method: "GET",
+      url: `/strategies/${strategyBody.strategyId}`
+    });
+
+    expect(resumedStatusResponse.statusCode).toBe(200);
+    expect(
+      resumedStatusResponse.json<{
+        status: string;
+      }>().status
+    ).toBe("active");
+  });
+
+  it("verifies the move authz and feegrant before confirming grants", async () => {
+    let verificationInput: Record<string, string> | null = null;
+    const verifyingApp = await createApp({
+      config: {
+        lockStakingModuleAddress: "0xlockverify",
+        lockStakingModuleName: "lock_staking",
+        lockupSeconds: "86400"
+      },
+      grantVerifier: {
+        verify: async (input) => {
+          verificationInput = input;
+
+          return {
+            moveGrantActive: true,
+            feegrantActive: true
+          };
+        }
+      }
+    });
+
+    try {
+      await verifyingApp.ready();
+      await verifyingApp.db.execute(`
+        truncate table executions, positions, grants, strategies, users
+        restart identity cascade;
+      `);
+
+      const registerResponse = await verifyingApp.inject({
+        method: "POST",
+        url: "/users/register",
+        payload: {
+          initiaAddress: "init1verifyuseraddress"
+        }
+      });
+      const registerBody = registerResponse.json<{ userId: string }>();
+
+      const strategyResponse = await verifyingApp.inject({
+        method: "POST",
+        url: "/strategies",
+        payload: {
+          userId: registerBody.userId,
+          inputDenom: "usdc",
+          targetPoolId: "pool-verify",
+          validatorAddress: "initvaloper1validator",
+          minBalanceAmount: "1",
+          maxAmountPerRun: "1000",
+          maxSlippageBps: 100,
+          cooldownSeconds: 300
+        }
+      });
+      const strategyBody = strategyResponse.json<{ strategyId: string }>();
+
+      await verifyingApp.inject({
+        method: "POST",
+        url: "/grants/prepare",
+        payload: {
+          userId: registerBody.userId,
+          strategyId: strategyBody.strategyId
+        }
+      });
+
+      const confirmResponse = await verifyingApp.inject({
+        method: "POST",
+        url: "/grants/confirm",
+        payload: {
+          userId: registerBody.userId,
+          strategyId: strategyBody.strategyId
+        }
+      });
+
+      expect(confirmResponse.statusCode).toBe(200);
+      expect(verificationInput).toEqual({
+        granterAddress: "init1verifyuseraddress",
+        granteeAddress: "init1replacekeeperaddress",
+        moduleAddress: "0xlockverify",
+        moduleName: "lock_staking",
+        functionName: "single_asset_provide_delegate",
+        feeAllowedMessage: "/cosmos.authz.v1beta1.MsgExec"
+      });
+    } finally {
+      await verifyingApp.close();
+    }
+  });
+
+  it("rejects grant confirmation when move authz or feegrant verification fails", async () => {
+    const rejectingApp = await createApp({
+      config: {
+        lockStakingModuleAddress: "0xlockreject",
+        lockStakingModuleName: "lock_staking",
+        lockupSeconds: "86400"
+      },
+      grantVerifier: {
+        verify: async () => ({
+          moveGrantActive: true,
+          feegrantActive: false
+        })
+      }
+    });
+
+    try {
+      await rejectingApp.ready();
+      await rejectingApp.db.execute(`
+        truncate table executions, positions, grants, strategies, users
+        restart identity cascade;
+      `);
+
+      const registerResponse = await rejectingApp.inject({
+        method: "POST",
+        url: "/users/register",
+        payload: {
+          initiaAddress: "init1rejectuseraddress"
+        }
+      });
+      const registerBody = registerResponse.json<{ userId: string }>();
+
+      const strategyResponse = await rejectingApp.inject({
+        method: "POST",
+        url: "/strategies",
+        payload: {
+          userId: registerBody.userId,
+          inputDenom: "usdc",
+          targetPoolId: "pool-reject",
+          validatorAddress: "initvaloper1validator",
+          minBalanceAmount: "1",
+          maxAmountPerRun: "1000",
+          maxSlippageBps: 100,
+          cooldownSeconds: 300
+        }
+      });
+      const strategyBody = strategyResponse.json<{ strategyId: string }>();
+
+      await rejectingApp.inject({
+        method: "POST",
+        url: "/grants/prepare",
+        payload: {
+          userId: registerBody.userId,
+          strategyId: strategyBody.strategyId
+        }
+      });
+
+      const confirmResponse = await rejectingApp.inject({
+        method: "POST",
+        url: "/grants/confirm",
+        payload: {
+          userId: registerBody.userId,
+          strategyId: strategyBody.strategyId
+        }
+      });
+
+      expect(confirmResponse.statusCode).toBe(409);
+      expect(confirmResponse.json()).toEqual({
+        error: "Grant verification failed",
+        missing: ["feegrant"]
+      });
+
+      const statusResponse = await rejectingApp.inject({
+        method: "GET",
+        url: `/strategies/${strategyBody.strategyId}`
+      });
+
+      expect(statusResponse.statusCode).toBe(200);
+      expect(
+        statusResponse.json<{
+          status: string;
+          grantStatus: {
+            move: string;
+            feegrant: string;
+          };
+        }>()
+      ).toMatchObject({
+        status: "grant_pending",
+        grantStatus: {
+          move: "pending",
+          feegrant: "pending"
+        }
+      });
+    } finally {
+      await rejectingApp.close();
     }
   });
 });

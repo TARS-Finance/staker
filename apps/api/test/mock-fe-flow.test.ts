@@ -15,6 +15,12 @@ describe("mock frontend flow", () => {
         lockStakingModuleAddress: "0xlock",
         lockStakingModuleName: "lock_staking",
         lockupSeconds: "86400"
+      },
+      grantVerifier: {
+        verify: async () => ({
+          moveGrantActive: true,
+          feegrantActive: true
+        })
       }
     });
     await app.ready();

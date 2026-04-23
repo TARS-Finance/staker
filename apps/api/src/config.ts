@@ -4,6 +4,7 @@ import { loadEnvironment } from "@stacker/shared";
 export type ApiConfig = {
   port: number;
   databaseUrl: string;
+  initiaLcdUrl: string;
   keeperAddress: string;
   dexModuleAddress: string;
   dexModuleName: string;
@@ -37,6 +38,7 @@ export function loadApiConfig(overrides: Partial<ApiConfig> = {}): ApiConfig {
   return {
     port: Number(process.env.API_PORT ?? "3000"),
     databaseUrl: env.databaseUrl,
+    initiaLcdUrl: env.initiaLcdUrl,
     keeperAddress: env.keeperAddress,
     dexModuleAddress: env.dexModuleAddress,
     dexModuleName: env.dexModuleName,
