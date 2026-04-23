@@ -1,4 +1,5 @@
 import {
+  getBondedLockedLpBalance,
   reconcileDelegate,
   reconcileProvide,
   type KeeperChainClient,
@@ -159,6 +160,48 @@ export function createKeeperRunner(dependencies: KeeperDependencies) {
     user: UserRecord,
     now: Date,
   ) {
+    if (executionMode === "single-asset-provide-delegate") {
+      if (
+        !dependencies.lockStakingModuleAddress
+        || !dependencies.lockStakingModuleName
+      ) {
+        throw new Error(
+          "Lock staking execution mode requires module address and module name."
+        );
+      }
+
+      const [lastInputBalance, lastLpBalance, lastDelegatedLpBalance] =
+        await Promise.all([
+          dependencies.chain.getInputBalance({
+            userAddress: user.initiaAddress,
+            denom: strategy.inputDenom,
+          }),
+          dependencies.chain.getLpBalance({
+            userAddress: user.initiaAddress,
+            lpDenom,
+          }),
+          getBondedLockedLpBalance(dependencies.chain, {
+            userAddress: user.initiaAddress,
+            targetPoolId: strategy.targetPoolId,
+            validatorAddress: strategy.validatorAddress,
+            moduleAddress: dependencies.lockStakingModuleAddress,
+            moduleName: dependencies.lockStakingModuleName,
+          }),
+        ]);
+
+      await dependencies.positionsRepository.upsertForStrategy({
+        strategyId: strategy.id,
+        userId: strategy.userId,
+        lastInputBalance,
+        lastLpBalance,
+        lastDelegatedLpBalance,
+        lastRewardSnapshot: null,
+        lastSyncedAt: now,
+      });
+
+      return;
+    }
+
     const balances = await reconcileDelegate(dependencies.chain, {
       userAddress: user.initiaAddress,
       inputDenom: strategy.inputDenom,

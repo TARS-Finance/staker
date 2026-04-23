@@ -223,6 +223,7 @@ export type FakeChainState = {
   inputBalance: string;
   lpBalance: string;
   delegatedLpBalance: string;
+  bondedLockedLpBalance?: string;
   provideResult?: {
     txHash: string;
     lpAmount: string;
@@ -261,6 +262,10 @@ export class FakeKeeperChain {
 
   async getDelegatedLpBalance() {
     return this.state.delegatedLpBalance;
+  }
+
+  async getBondedLockedLpBalance() {
+    return this.state.bondedLockedLpBalance ?? this.state.delegatedLpBalance;
   }
 
   async provideSingleAssetLiquidity() {

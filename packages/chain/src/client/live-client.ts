@@ -42,6 +42,13 @@ type RestClientLike = {
   };
   move: {
     metadata(denom: string): Promise<string>;
+    viewFunction?(
+      moduleAddress: string,
+      moduleName: string,
+      functionName: string,
+      typeArgs: string[],
+      args: string[]
+    ): Promise<unknown>;
   };
   mstaking: {
     delegation(
@@ -113,6 +120,39 @@ function applySlippageBps(amount: bigint, slippageBps: string) {
   }
 
   return (amount * (10_000n - bps)) / 10_000n;
+}
+
+type BondedLockedDelegation = {
+  metadata?: unknown;
+  validator?: unknown;
+  amount?: unknown;
+};
+
+function normalizeObjectAddress(value: string) {
+  return value.toLowerCase();
+}
+
+function extractBondedLockedDelegations(value: unknown): BondedLockedDelegation[] {
+  if (Array.isArray(value)) {
+    return value.filter(
+      (item): item is BondedLockedDelegation =>
+        Boolean(item) && typeof item === "object"
+    );
+  }
+
+  if (
+    value
+    && typeof value === "object"
+    && "data" in value
+    && Array.isArray((value as { data?: unknown[] }).data)
+  ) {
+    return (value as { data: unknown[] }).data.filter(
+      (item): item is BondedLockedDelegation =>
+        Boolean(item) && typeof item === "object"
+    );
+  }
+
+  return [];
 }
 
 function extractLpQuoteFromSimulation(input: {
@@ -239,6 +279,59 @@ export class LiveKeeperChainClient implements KeeperChainClient {
     }
   }
 
+  async getBondedLockedLpBalance(request: {
+    userAddress: string;
+    targetPoolId: string;
+    validatorAddress: string;
+    moduleAddress: string;
+    moduleName: string;
+  }): Promise<string> {
+    if (!this.rest.move.viewFunction) {
+      throw new Error("Configured REST client does not support Move view functions.");
+    }
+
+    try {
+      const response = await this.rest.move.viewFunction(
+        request.moduleAddress,
+        request.moduleName,
+        "get_bonded_locked_delegations",
+        [],
+        [bcs.address().serialize(request.userAddress).toBase64()]
+      );
+
+      const targetPoolId = normalizeObjectAddress(request.targetPoolId);
+      let total = 0n;
+
+      for (const item of extractBondedLockedDelegations(response)) {
+        const metadata =
+          typeof item.metadata === "string"
+            ? normalizeObjectAddress(item.metadata)
+            : null;
+        const validator =
+          typeof item.validator === "string" ? item.validator : null;
+        const amount = typeof item.amount === "string" ? item.amount : null;
+
+        if (
+          metadata !== targetPoolId
+          || validator !== request.validatorAddress
+          || !amount
+        ) {
+          continue;
+        }
+
+        total += BigInt(amount);
+      }
+
+      return total.toString();
+    } catch (error) {
+      if (isNotFoundError(error)) {
+        return "0";
+      }
+
+      throw error;
+    }
+  }
+
   async provideSingleAssetLiquidity(
     request: ProvideSingleAssetLiquidityRequest
   ): Promise<ProvideSingleAssetLiquidityResult> {
@@ -313,10 +406,12 @@ export class LiveKeeperChainClient implements KeeperChainClient {
     request: SingleAssetProvideDelegateRequest
   ): Promise<SingleAssetProvideDelegateResult> {
     const beforeDelegatedBalance = BigInt(
-      await this.getDelegatedLpBalance({
+      await this.getBondedLockedLpBalance({
         userAddress: request.userAddress,
+        targetPoolId: request.targetPoolId,
         validatorAddress: request.validatorAddress,
-        lpDenom: request.lpDenom,
+        moduleAddress: request.moduleAddress,
+        moduleName: request.moduleName,
       })
     );
     const inputCoinMetadata = await this.rest.move.metadata(request.inputDenom);
@@ -371,10 +466,12 @@ export class LiveKeeperChainClient implements KeeperChainClient {
     }
 
     const afterDelegatedBalance = BigInt(
-      await this.getDelegatedLpBalance({
+      await this.getBondedLockedLpBalance({
         userAddress: request.userAddress,
+        targetPoolId: request.targetPoolId,
         validatorAddress: request.validatorAddress,
-        lpDenom: request.lpDenom,
+        moduleAddress: request.moduleAddress,
+        moduleName: request.moduleName,
       })
     );
     const delegatedDelta = afterDelegatedBalance - beforeDelegatedBalance;

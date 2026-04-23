@@ -4,6 +4,8 @@ import { createLiveKeeperChainClient } from "../src/index.js";
 
 const pairObjectId = `0x${"1".repeat(64)}`;
 const coinMetadataObjectId = `0x${"2".repeat(64)}`;
+const userAddress = "init18f735agmd8zav9lrtnregkqn7eu4wc8cnanpql";
+const validatorAddress = "initvaloper1cduny8wdjupu2lhya9npc9j4x5ytn05kt36x0c";
 
 describe("live keeper chain client", () => {
   it("reads input, lp, and delegated balances from Initia REST queries", async () => {
@@ -51,23 +53,78 @@ describe("live keeper chain client", () => {
 
     await expect(
       client.getInputBalance({
-        userAddress: "init1useraddress",
+        userAddress,
         denom: "usdc"
       })
     ).resolves.toBe("500");
     await expect(
       client.getLpBalance({
-        userAddress: "init1useraddress",
+        userAddress,
         lpDenom: "ulp"
       })
     ).resolves.toBe("25");
     await expect(
       client.getDelegatedLpBalance({
-        userAddress: "init1useraddress",
-        validatorAddress: "initvaloper1validator",
+        userAddress,
+        validatorAddress,
         lpDenom: "ulp"
       })
     ).resolves.toBe("18");
+  });
+
+  it("reads bonded locked lp balance from the lock-staking view", async () => {
+    const client = createLiveKeeperChainClient({
+      lcdUrl: "https://rest.testnet.initia.xyz",
+      privateKey: "1".repeat(64),
+      keeperAddress: "init1keeperaddress",
+      restClient: {
+        bank: {
+          balanceByDenom: vi.fn()
+        },
+        move: {
+          metadata: vi.fn(async () => coinMetadataObjectId),
+          viewFunction: vi.fn(async () => [
+            {
+          metadata: pairObjectId,
+          validator: validatorAddress,
+          locked_share: "250",
+          amount: "250",
+          release_time: "1777057735"
+            },
+            {
+              metadata: pairObjectId,
+              validator: "initvaloper1othervalidator",
+              locked_share: "999",
+              amount: "999",
+              release_time: "1777057735"
+            }
+          ])
+        },
+        mstaking: {
+          delegation: vi.fn()
+        },
+        tx: {
+          simulate: vi.fn(),
+          broadcast: vi.fn(),
+          txInfo: vi.fn()
+        }
+      },
+      wallet: {
+        accAddress: "init1keeperaddress",
+        createAndSignTx: vi.fn(),
+        sequence: vi.fn(async () => 7)
+      }
+    });
+
+    await expect(
+      client.getBondedLockedLpBalance({
+        userAddress,
+        targetPoolId: pairObjectId,
+        validatorAddress,
+        moduleAddress: "0xlock",
+        moduleName: "lock_staking"
+      })
+    ).resolves.toBe("250");
   });
 
   it("signs and broadcasts an authz-wrapped provide tx and returns the lp delta", async () => {
@@ -123,7 +180,7 @@ describe("live keeper chain client", () => {
 
     await expect(
       client.provideSingleAssetLiquidity({
-        userAddress: "init1useraddress",
+        userAddress,
         targetPoolId: pairObjectId,
         inputDenom: "usdc",
         lpDenom: "ulp",
@@ -158,20 +215,26 @@ describe("live keeper chain client", () => {
   });
 
   it("signs and broadcasts an authz-wrapped single-asset provide+delegate tx", async () => {
-    const delegatedBalances = vi
+    const bondedLockedDelegations = vi
       .fn()
-      .mockResolvedValueOnce({
-        balance: {
-          get: (denom: string) =>
-            denom === "ulp" ? { amount: "10", denom } : undefined
+      .mockResolvedValueOnce([
+        {
+          metadata: pairObjectId,
+          validator: validatorAddress,
+          locked_share: "10",
+          amount: "10",
+          release_time: "1776970386"
         }
-      })
-      .mockResolvedValueOnce({
-        balance: {
-          get: (denom: string) =>
-            denom === "ulp" ? { amount: "25", denom } : undefined
+      ])
+      .mockResolvedValueOnce([
+        {
+          metadata: pairObjectId,
+          validator: validatorAddress,
+          locked_share: "25",
+          amount: "25",
+          release_time: "1776970386"
         }
-      });
+      ]);
     const broadcast = vi.fn(async () => ({
       txhash: "provide-delegate-hash",
       raw_log: "",
@@ -202,10 +265,11 @@ describe("live keeper chain client", () => {
           balanceByDenom: vi.fn(async () => ({ amount: "0", denom: "ulp" }))
         },
         move: {
-          metadata: vi.fn(async () => coinMetadataObjectId)
+          metadata: vi.fn(async () => coinMetadataObjectId),
+          viewFunction: bondedLockedDelegations
         },
         mstaking: {
-          delegation: delegatedBalances
+          delegation: vi.fn()
         },
         tx: {
           simulate,
@@ -222,7 +286,7 @@ describe("live keeper chain client", () => {
 
     await expect(
       client.singleAssetProvideDelegate({
-        userAddress: "init1useraddress",
+        userAddress,
         targetPoolId: pairObjectId,
         inputDenom: "usdc",
         lpDenom: "ulp",
@@ -231,7 +295,7 @@ describe("live keeper chain client", () => {
         moduleAddress: "0xlock",
         moduleName: "lock_staking",
         releaseTime: "1776970386",
-        validatorAddress: "initvaloper1validator"
+        validatorAddress
       })
     ).resolves.toEqual({
       txHash: "provide-delegate-hash",
@@ -256,7 +320,8 @@ describe("live keeper chain client", () => {
     ).toBe(bcs.u64().serialize(1776970386n).toBase64());
     expect(
       provideDelegateTxInput.msgs[0]?.toData().msgs[0]?.args[5]
-    ).toBe(bcs.string().serialize("initvaloper1validator").toBase64());
+    ).toBe(bcs.string().serialize(validatorAddress).toBase64());
+    expect(bondedLockedDelegations).toHaveBeenCalledTimes(2);
     expect(broadcast).toHaveBeenCalledTimes(1);
   });
 
@@ -310,7 +375,7 @@ describe("live keeper chain client", () => {
 
     await expect(
       client.provideSingleAssetLiquidity({
-        userAddress: "init1useraddress",
+        userAddress,
         targetPoolId: pairObjectId,
         inputDenom: "usdc",
         lpDenom: "ulp",
@@ -362,8 +427,8 @@ describe("live keeper chain client", () => {
 
     await expect(
       client.delegateLp({
-        userAddress: "init1useraddress",
-        validatorAddress: "initvaloper1validator",
+        userAddress,
+        validatorAddress,
         lpDenom: "ulp",
         amount: "15"
       })

@@ -58,6 +58,13 @@ export interface KeeperChainClient {
     validatorAddress: string;
     lpDenom: string;
   }): Promise<string>;
+  getBondedLockedLpBalance(input: {
+    userAddress: string;
+    targetPoolId: string;
+    validatorAddress: string;
+    moduleAddress: string;
+    moduleName: string;
+  }): Promise<string>;
   provideSingleAssetLiquidity(
     input: ProvideSingleAssetLiquidityRequest
   ): Promise<ProvideSingleAssetLiquidityResult>;

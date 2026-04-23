@@ -9,6 +9,7 @@ export { buildDirectSingleAssetProvideDelegate } from "./vip/build-direct-single
 export { getInputBalance } from "./query/get-input-balance.js";
 export { getLpBalance } from "./query/get-lp-balance.js";
 export { getDelegatedLpBalance } from "./query/get-delegated-lp-balance.js";
+export { getBondedLockedLpBalance } from "./query/get-bonded-locked-lp-balance.js";
 export { reconcileProvide } from "./reconcile/reconcile-provide.js";
 export { reconcileDelegate } from "./reconcile/reconcile-delegate.js";
 export {

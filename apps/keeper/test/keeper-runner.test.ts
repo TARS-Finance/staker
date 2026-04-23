@@ -220,7 +220,8 @@ describe("keeper runner", () => {
       chainState: {
         inputBalance: "500",
         lpBalance: "0",
-        delegatedLpBalance: "250",
+        delegatedLpBalance: "0",
+        bondedLockedLpBalance: "250",
         provideDelegateResult: {
           txHash: "provide-delegate-1",
           lpAmount: "250"
@@ -258,6 +259,11 @@ describe("keeper runner", () => {
       provideTxHash: "provide-delegate-1",
       delegateTxHash: "provide-delegate-1",
       lpAmount: "250"
+    });
+    expect(fixture.positionsRepository.list()[0]).toMatchObject({
+      lastInputBalance: "500",
+      lastLpBalance: "0",
+      lastDelegatedLpBalance: "250"
     });
   });
 });

@@ -34,6 +34,14 @@ function delegatedBalanceKey(
   return `${userAddress}:${validatorAddress}:${denom}`;
 }
 
+function bondedLockedBalanceKey(
+  userAddress: string,
+  validatorAddress: string,
+  targetPoolId: string
+): string {
+  return `${userAddress}:${validatorAddress}:${targetPoolId}:bonded-locked`;
+}
+
 function encodeProvideArgs(input: ProvideSingleAssetLiquidityRequest): string[] {
   return [
     Buffer.from(
@@ -119,6 +127,22 @@ export class DryRunKeeperChainClient implements KeeperChainClient {
     return (this.balances.get(key) ?? 0n).toString();
   }
 
+  async getBondedLockedLpBalance(request: {
+    userAddress: string;
+    targetPoolId: string;
+    validatorAddress: string;
+    moduleAddress: string;
+    moduleName: string;
+  }): Promise<string> {
+    const key = bondedLockedBalanceKey(
+      request.userAddress,
+      request.validatorAddress,
+      request.targetPoolId
+    );
+
+    return (this.balances.get(key) ?? 0n).toString();
+  }
+
   async provideSingleAssetLiquidity(
     request: ProvideSingleAssetLiquidityRequest
   ): Promise<ProvideSingleAssetLiquidityResult> {
@@ -163,6 +187,11 @@ export class DryRunKeeperChainClient implements KeeperChainClient {
       request.validatorAddress,
       request.lpDenom
     );
+    const bondedLockedKey = bondedLockedBalanceKey(
+      request.userAddress,
+      request.validatorAddress,
+      request.targetPoolId
+    );
     const currentInput = BigInt(await this.getInputBalance({
       userAddress: request.userAddress,
       denom: request.inputDenom
@@ -177,6 +206,10 @@ export class DryRunKeeperChainClient implements KeeperChainClient {
     this.balances.set(
       delegatedKey,
       (this.balances.get(delegatedKey) ?? 0n) + amount
+    );
+    this.balances.set(
+      bondedLockedKey,
+      (this.balances.get(bondedLockedKey) ?? 0n) + amount
     );
     this.plannedMessages.push(
       buildProvideDelegateMsg({
