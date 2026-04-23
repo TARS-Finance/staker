@@ -117,6 +117,15 @@ await requestJson<{
 const strategyStatus = await requestJson<{
   strategyId: string;
   status: string;
+  executionMode: "provide-then-delegate" | "single-asset-provide-delegate";
+  balances: {
+    input: string;
+    lp: string;
+    delegatedLp: string;
+    delegatedLpKind: "delegated" | "bonded-locked";
+  };
 }>(`${apiBaseUrl}/strategies/${createStrategy.strategyId}`);
 
 console.log(`resulting strategy status: ${strategyStatus.status}`);
+console.log(`execution mode: ${strategyStatus.executionMode}`);
+console.log(`delegated lp kind: ${strategyStatus.balances.delegatedLpKind}`);

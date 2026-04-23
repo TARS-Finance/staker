@@ -5,6 +5,7 @@ import {
   StrategiesRepository
 } from "@stacker/db";
 import type { ApiConfig } from "../config.js";
+import { getDelegatedLpKind } from "./position-mode.js";
 
 export type CreateStrategyInput = {
   userId: string;
@@ -57,6 +58,7 @@ export class StrategiesService {
     return {
       strategyId: strategy.id,
       status: strategy.status,
+      executionMode: this.config.executionMode,
       grantStatus: {
         move: grant?.moveGrantStatus ?? "pending",
         staking: grant?.stakingGrantStatus ?? "pending",
@@ -66,7 +68,8 @@ export class StrategiesService {
       balances: {
         input: position?.lastInputBalance ?? "0",
         lp: position?.lastLpBalance ?? "0",
-        delegatedLp: position?.lastDelegatedLpBalance ?? "0"
+        delegatedLp: position?.lastDelegatedLpBalance ?? "0",
+        delegatedLpKind: getDelegatedLpKind(this.config.executionMode)
       },
       lastExecution: lastExecution
         ? {

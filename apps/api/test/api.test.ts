@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { positions } from "@stacker/db";
 import { createApp } from "../src/app.js";
 
 describe("stacker api", () => {
@@ -144,7 +145,8 @@ describe("stacker api", () => {
     expect(statusBody.balances).toEqual({
       input: "0",
       lp: "0",
-      delegatedLp: "0"
+      delegatedLp: "0",
+      delegatedLpKind: "delegated"
     });
     expect(statusBody.lastExecution).toBeNull();
 
@@ -246,6 +248,101 @@ describe("stacker api", () => {
           function_names: ["single_asset_provide_delegate"]
         }
       ]);
+    } finally {
+      await rewardApp.close();
+    }
+  });
+
+  it("labels bonded lock-staking balances explicitly in reward mode status and positions", async () => {
+    const rewardApp = await createApp({
+      config: {
+        executionMode: "single-asset-provide-delegate",
+        lockStakingModuleAddress:
+          "0x81c3ea419d2fd3a27971021d9dd3cc708def05e5d6a09d39b2f1f9ba18312264",
+        lockStakingModuleName: "lock_staking"
+      }
+    });
+
+    try {
+      await rewardApp.ready();
+      await rewardApp.db.execute(`
+        truncate table executions, positions, grants, strategies, users
+        restart identity cascade;
+      `);
+
+      const registerResponse = await rewardApp.inject({
+        method: "POST",
+        url: "/users/register",
+        payload: {
+          initiaAddress: "init18f735agmd8zav9lrtnregkqn7eu4wc8cnanpql"
+        }
+      });
+      const registerBody = registerResponse.json<{ userId: string }>();
+
+      const strategyResponse = await rewardApp.inject({
+        method: "POST",
+        url: "/strategies",
+        payload: {
+          userId: registerBody.userId,
+          inputDenom: "usdc",
+          targetPoolId:
+            "0xdbf06c48af3984ec6d9ae8a9aa7dbb0bb1e784aa9b8c4a5681af660cf8558d7d",
+          validatorAddress: "initvaloper1cduny8wdjupu2lhya9npc9j4x5ytn05kt36x0c",
+          minBalanceAmount: "100",
+          maxAmountPerRun: "1000",
+          maxSlippageBps: 100,
+          cooldownSeconds: 300
+        }
+      });
+      const strategyBody = strategyResponse.json<{ strategyId: string }>();
+
+      await rewardApp.db.insert(positions).values({
+        strategyId: strategyBody.strategyId,
+        userId: registerBody.userId,
+        lastInputBalance: "500",
+        lastLpBalance: "0",
+        lastDelegatedLpBalance: "828440",
+        lastRewardSnapshot: null,
+        lastSyncedAt: new Date("2026-04-23T19:08:55.000Z")
+      });
+
+      const statusResponse = await rewardApp.inject({
+        method: "GET",
+        url: `/strategies/${strategyBody.strategyId}`
+      });
+
+      expect(statusResponse.statusCode).toBe(200);
+      expect(statusResponse.json()).toMatchObject({
+        strategyId: strategyBody.strategyId,
+        executionMode: "single-asset-provide-delegate",
+        balances: {
+          input: "500",
+          lp: "0",
+          delegatedLp: "828440",
+          delegatedLpKind: "bonded-locked"
+        }
+      });
+
+      const positionsResponse = await rewardApp.inject({
+        method: "GET",
+        url: `/positions/${registerBody.userId}`
+      });
+
+      expect(positionsResponse.statusCode).toBe(200);
+      expect(positionsResponse.json()).toMatchObject({
+        positions: [
+          {
+            strategyId: strategyBody.strategyId,
+            inputDenom: "usdc",
+            targetPoolId:
+              "0xdbf06c48af3984ec6d9ae8a9aa7dbb0bb1e784aa9b8c4a5681af660cf8558d7d",
+            validatorAddress: "initvaloper1cduny8wdjupu2lhya9npc9j4x5ytn05kt36x0c",
+            executionMode: "single-asset-provide-delegate",
+            delegatedLpKind: "bonded-locked",
+            lastDelegatedLpBalance: "828440"
+          }
+        ]
+      });
     } finally {
       await rewardApp.close();
     }

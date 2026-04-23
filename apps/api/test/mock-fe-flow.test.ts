@@ -46,5 +46,6 @@ describe("mock frontend flow", () => {
     expect(stdout).toContain("created strategy id:");
     expect(stdout).toContain("keeper address:");
     expect(stdout).toContain("resulting strategy status: active");
+    expect(stdout).toContain("delegated lp kind:");
   });
 });
