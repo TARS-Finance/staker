@@ -10,7 +10,13 @@ describe("mock frontend flow", () => {
   let apiBaseUrl: string;
 
   beforeAll(async () => {
-    app = await createApp();
+    app = await createApp({
+      config: {
+        lockStakingModuleAddress: "0xlock",
+        lockStakingModuleName: "lock_staking",
+        lockupSeconds: "86400"
+      }
+    });
     await app.ready();
     apiBaseUrl = await app.listen({
       host: "127.0.0.1",
@@ -26,7 +32,7 @@ describe("mock frontend flow", () => {
   });
 
   afterAll(async () => {
-    await app.close();
+    await app?.close();
   });
 
   it("runs the onboarding flow from the script and prints the resulting lifecycle", async () => {

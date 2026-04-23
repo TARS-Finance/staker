@@ -11,7 +11,9 @@ describe("parseEnvironment", () => {
       KEEPER_ADDRESS: "init1keeperaddress",
       TARGET_POOL_ID: "pool-1",
       DEX_MODULE_ADDRESS: "0x1",
-      DEX_MODULE_NAME: "dex"
+      DEX_MODULE_NAME: "dex",
+      LOCK_STAKING_MODULE_ADDRESS: "0xlock",
+      LOCKUP_SECONDS: "86400"
     });
 
     expect(parsed.targetPoolId).toBe("pool-1");
@@ -27,7 +29,9 @@ describe("parseEnvironment", () => {
         KEEPER_ADDRESS: "init1keeperaddress",
         TARGET_POOL_ID: "pool-1",
         DEX_MODULE_ADDRESS: "0x1",
-        DEX_MODULE_NAME: "dex"
+        DEX_MODULE_NAME: "dex",
+        LOCK_STAKING_MODULE_ADDRESS: "0xlock",
+        LOCKUP_SECONDS: "86400"
       })
     ).toThrowError(/KEEPER_PRIVATE_KEY/);
   });
@@ -42,7 +46,9 @@ describe("parseEnvironment", () => {
         KEEPER_ADDRESS: "init1keeperaddress",
         TARGET_POOL_ID: "pool-1",
         DEX_MODULE_ADDRESS: "0x1",
-        DEX_MODULE_NAME: "dex"
+        DEX_MODULE_NAME: "dex",
+        LOCK_STAKING_MODULE_ADDRESS: "0xlock",
+        LOCKUP_SECONDS: "86400"
       })
     ).toThrowError(/DATABASE_URL/);
   });

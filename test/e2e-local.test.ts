@@ -28,7 +28,13 @@ describe("local end-to-end flow", () => {
       await client.end();
     }
 
-    app = await createApp();
+    app = await createApp({
+      config: {
+        lockStakingModuleAddress: "0xlock",
+        lockStakingModuleName: "lock_staking",
+        lockupSeconds: "86400"
+      }
+    });
     await app.ready();
   });
 
@@ -40,7 +46,7 @@ describe("local end-to-end flow", () => {
   });
 
   afterAll(async () => {
-    await app.close();
+    await app?.close();
   });
 
   it("creates a strategy, confirms grants, runs a dry-run tick, and persists a simulated execution", async () => {
@@ -104,11 +110,15 @@ describe("local end-to-end flow", () => {
           startingBalances: {
             "init1e2euser:usdc": "500",
             "init1e2euser:ulp": "0",
-            "init1e2euser:initvaloper1validator:ulp": "0"
+            "init1e2euser:initvaloper1validator:ulp": "0",
+            "init1e2euser:initvaloper1validator:pool-1:bonded-locked": "0"
           }
         }),
         locks: new StrategyLocks(),
-        lpDenom: "ulp"
+        lpDenom: "ulp",
+        lockStakingModuleAddress: "0xlock",
+        lockStakingModuleName: "lock_staking",
+        lockupSeconds: "86400"
       });
 
       await runner.runTick();
@@ -126,8 +136,8 @@ describe("local end-to-end flow", () => {
       executions: [
         expect.objectContaining({
           status: "simulated",
-          provideTxHash: "dry-run-provide-1",
-          delegateTxHash: "dry-run-delegate-2"
+          provideTxHash: "dry-run-provide-delegate-1",
+          delegateTxHash: "dry-run-provide-delegate-1"
         })
       ]
     });
@@ -144,7 +154,8 @@ describe("local end-to-end flow", () => {
           strategyId: strategyBody.strategyId,
           lastInputBalance: "250",
           lastLpBalance: "0",
-          lastDelegatedLpBalance: "250"
+          lastDelegatedLpBalance: "250",
+          delegatedLpKind: "bonded-locked"
         })
       ]
     });

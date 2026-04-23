@@ -1,7 +1,4 @@
 export type KeeperMode = "dry-run" | "live";
-export type StrategyExecutionMode =
-  | "provide-then-delegate"
-  | "single-asset-provide-delegate";
 
 type SingleAssetProvideBaseRequest = {
   userAddress: string;

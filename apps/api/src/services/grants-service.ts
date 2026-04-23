@@ -1,4 +1,4 @@
-import { buildFeeGrant, buildMoveGrant, buildStakeGrant } from "@stacker/chain";
+import { buildFeeGrant, buildMoveGrant } from "@stacker/chain";
 import { GrantsRepository, StrategiesRepository, UsersRepository } from "@stacker/db";
 import type { ApiConfig } from "../config.js";
 
@@ -21,42 +21,14 @@ export class GrantsService {
     const expiresAt = new Date(
       Date.now() + this.config.grantExpiryHours * 60 * 60 * 1000
     );
-    const moveGrantScope =
-      this.config.executionMode === "single-asset-provide-delegate"
-        ? {
-            moduleAddress:
-              this.config.lockStakingModuleAddress ?? this.config.dexModuleAddress,
-            moduleName:
-              this.config.lockStakingModuleName ?? "lock_staking",
-            functionNames: ["single_asset_provide_delegate"]
-          }
-        : {
-            moduleAddress: this.config.dexModuleAddress,
-            moduleName: this.config.dexModuleName,
-            functionNames: ["single_asset_provide_liquidity_script"]
-          };
-    const requiresStakingGrant =
-      this.config.executionMode !== "single-asset-provide-delegate";
     const moveGrant = buildMoveGrant({
       granter: user.initiaAddress,
       grantee: this.config.keeperAddress,
-      moduleAddress: moveGrantScope.moduleAddress,
-      moduleName: moveGrantScope.moduleName,
-      functionNames: moveGrantScope.functionNames,
+      moduleAddress: this.config.lockStakingModuleAddress,
+      moduleName: this.config.lockStakingModuleName,
+      functionNames: ["single_asset_provide_delegate"],
       expiresAt
     });
-    const stakingGrant = requiresStakingGrant
-      ? buildStakeGrant({
-          granter: user.initiaAddress,
-          grantee: this.config.keeperAddress,
-          validatorAddress: strategy.validatorAddress,
-          maxTokens: {
-            denom: this.config.lpDenom,
-            amount: strategy.maxAmountPerRun
-          },
-          expiresAt
-        })
-      : null;
     const feeGrant = buildFeeGrant({
       granter: user.initiaAddress,
       grantee: this.config.keeperAddress,
@@ -71,14 +43,14 @@ export class GrantsService {
       userId,
       keeperAddress: this.config.keeperAddress,
       moveGrantExpiresAt: expiresAt,
-      stakingGrantExpiresAt: requiresStakingGrant ? expiresAt : null,
+      stakingGrantExpiresAt: null,
       feegrantExpiresAt: expiresAt,
       moveGrantStatus: "pending",
       stakingGrantStatus: "pending",
       feegrantStatus: "pending",
       scopeJson: {
         moveGrant: moveGrant.toData(),
-        stakingGrant: stakingGrant?.toData() ?? null,
+        stakingGrant: null,
         feeGrant: feeGrant.toData()
       }
     });
@@ -87,7 +59,7 @@ export class GrantsService {
       keeperAddress: this.config.keeperAddress,
       grants: {
         move: moveGrant.toData(),
-        staking: stakingGrant?.toData() ?? null,
+        staking: null,
         feegrant: feeGrant.toData()
       }
     };
@@ -101,21 +73,14 @@ export class GrantsService {
       return null;
     }
 
-    const requiresStakingGrant =
-      this.config.executionMode !== "single-asset-provide-delegate";
-
     await this.grantsRepository.upsertForUser({
       userId,
       keeperAddress: existingGrant.keeperAddress,
       moveGrantExpiresAt: existingGrant.moveGrantExpiresAt,
-      stakingGrantExpiresAt: requiresStakingGrant
-        ? existingGrant.stakingGrantExpiresAt
-        : null,
+      stakingGrantExpiresAt: null,
       feegrantExpiresAt: existingGrant.feegrantExpiresAt,
       moveGrantStatus: "active",
-      stakingGrantStatus: requiresStakingGrant
-        ? "active"
-        : existingGrant.stakingGrantStatus,
+      stakingGrantStatus: existingGrant.stakingGrantStatus,
       feegrantStatus: "active",
       scopeJson: existingGrant.scopeJson
     });
@@ -130,7 +95,7 @@ export class GrantsService {
       strategyStatus: updatedStrategy?.status ?? "active",
       grantStatus: {
         move: "active",
-        staking: requiresStakingGrant ? "active" : "not-required",
+        staking: "not-required",
         feegrant: "active"
       }
     };

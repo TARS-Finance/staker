@@ -59,13 +59,10 @@ export class StrategiesService {
     return {
       strategyId: strategy.id,
       status: strategy.status,
-      executionMode: this.config.executionMode,
+      executionMode: "single-asset-provide-delegate" as const,
       grantStatus: {
         move: grant?.moveGrantStatus ?? "pending",
-        staking:
-          this.config.executionMode === "single-asset-provide-delegate"
-            ? "not-required"
-            : (grant?.stakingGrantStatus ?? "pending"),
+        staking: "not-required" as const,
         feegrant: grant?.feegrantStatus ?? "pending",
         expiresAt: grant?.moveGrantExpiresAt?.toISOString() ?? null
       },
@@ -73,7 +70,7 @@ export class StrategiesService {
         input: position?.lastInputBalance ?? "0",
         lp: position?.lastLpBalance ?? "0",
         delegatedLp: position?.lastDelegatedLpBalance ?? "0",
-        delegatedLpKind: getDelegatedLpKind(this.config.executionMode)
+        delegatedLpKind: getDelegatedLpKind()
       },
       rewardLock: parseRewardLockSnapshot(position?.lastRewardSnapshot ?? null),
       lastExecution: lastExecution

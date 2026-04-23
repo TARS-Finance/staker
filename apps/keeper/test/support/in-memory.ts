@@ -241,6 +241,19 @@ export type FakeChainState = {
       lockedShare: string;
     } | null;
   };
+  provideDelegatePromise?: Promise<{
+    txHash: string;
+    lpAmount: string;
+    rewardSnapshot?: {
+      kind: "bonded-locked";
+      stakingAccount: string;
+      metadata: string;
+      releaseTime: string;
+      releaseTimeIso: string;
+      validatorAddress: string;
+      lockedShare: string;
+    } | null;
+  }>;
   providePromise?: Promise<{
     txHash: string;
     lpAmount: string;
@@ -301,6 +314,10 @@ export class FakeKeeperChain {
     releaseTime: string;
   }) {
     this.provideDelegateCalls += 1;
+
+    if (this.state.provideDelegatePromise) {
+      return this.state.provideDelegatePromise;
+    }
 
     if (!this.state.provideDelegateResult) {
       throw new Error("Missing provide+delegate result");

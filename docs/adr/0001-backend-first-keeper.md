@@ -8,8 +8,8 @@ Accepted
 
 The service needs to automate per-user Initia actions:
 
-- provide single-asset liquidity into a target INIT pool
-- delegate the resulting LP position, or use the direct VIP lock-staking path when configured
+- convert one-sided input into a target INIT LP
+- lock-delegate the resulting LP position through the VIP lock-staking path
 
 The product scope explicitly excludes:
 
@@ -39,12 +39,7 @@ For safety, Phase 5 adds `KEEPER_MODE=dry-run|live`. Dry-run mode:
 - records executions as `simulated`
 - updates synthetic balances so reconciliation and positions can be verified locally
 
-The keeper now supports two execution modes:
-
-- `provide-then-delegate`
-  Uses `dex::single_asset_provide_liquidity_script` followed by a separate delegation tx.
-- `single-asset-provide-delegate`
-  Uses `vip::lock_staking::single_asset_provide_delegate` so one-sided input can be converted, provided, and locked for Enshrined Liquidity rewards in one tx.
+The keeper always uses `vip::lock_staking::single_asset_provide_delegate` so one-sided input can be converted, provided, and locked for Enshrined Liquidity rewards in one tx.
 
 ## Consequences
 
@@ -60,7 +55,7 @@ The keeper now supports two execution modes:
 - Dry-run balances are synthetic and not a price-accurate market simulation.
 - The database is required even for local verification flows.
 - Live mode now depends on simulated event parsing to derive `min_liquidity`; if InitiaDEX or bank event shapes change, the keeper will refuse to broadcast until the parser is updated.
-- The direct lock-staking mode currently reuses the existing staking grant flow for compatibility, even though the reward-bearing tx itself is fully Move-based. The grant bundle can be narrowed further in a later hardening pass.
+- Reward-mode reconciliation depends on the current VIP bonded-lock query/event shape; if Initia changes those return formats, the parser must be updated before live runs.
 
 ## Follow-Up
 

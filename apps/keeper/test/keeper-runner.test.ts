@@ -25,7 +25,10 @@ describe("keeper runner", () => {
       executionsRepository: fixture.executionsRepository,
       positionsRepository: fixture.positionsRepository,
       chain: fixture.chain,
-      locks: new StrategyLocks()
+      locks: new StrategyLocks(),
+      lockStakingModuleAddress: "0xlock",
+      lockStakingModuleName: "lock_staking",
+      lockupSeconds: "86400"
     });
 
     const result = await runner.runTick();
@@ -57,7 +60,10 @@ describe("keeper runner", () => {
       executionsRepository: fixture.executionsRepository,
       positionsRepository: fixture.positionsRepository,
       chain: fixture.chain,
-      locks: new StrategyLocks()
+      locks: new StrategyLocks(),
+      lockStakingModuleAddress: "0xlock",
+      lockStakingModuleName: "lock_staking",
+      lockupSeconds: "86400"
     });
 
     const result = await runner.runTick();
@@ -88,7 +94,10 @@ describe("keeper runner", () => {
       executionsRepository: fixture.executionsRepository,
       positionsRepository: fixture.positionsRepository,
       chain: fixture.chain,
-      locks: new StrategyLocks()
+      locks: new StrategyLocks(),
+      lockStakingModuleAddress: "0xlock",
+      lockStakingModuleName: "lock_staking",
+      lockupSeconds: "86400"
     });
 
     const result = await runner.runTick();
@@ -106,16 +115,23 @@ describe("keeper runner", () => {
     const deferred = new Deferred<{
       txHash: string;
       lpAmount: string;
+      rewardSnapshot?: {
+        kind: "bonded-locked";
+        stakingAccount: string;
+        metadata: string;
+        releaseTime: string;
+        releaseTimeIso: string;
+        validatorAddress: string;
+        lockedShare: string;
+      } | null;
     }>();
     const fixture = createKeeperFixture({
       chainState: {
         inputBalance: "500",
-        lpBalance: "250",
-        delegatedLpBalance: "250",
-        providePromise: deferred.promise,
-        delegateResult: {
-          txHash: "delegate-1"
-        }
+        lpBalance: "0",
+        delegatedLpBalance: "0",
+        bondedLockedLpBalance: "250",
+        provideDelegatePromise: deferred.promise
       }
     });
     const locks = new StrategyLocks();
@@ -127,7 +143,10 @@ describe("keeper runner", () => {
       executionsRepository: fixture.executionsRepository,
       positionsRepository: fixture.positionsRepository,
       chain: fixture.chain,
-      locks
+      locks,
+      lockStakingModuleAddress: "0xlock",
+      lockStakingModuleName: "lock_staking",
+      lockupSeconds: "86400"
     });
 
     const firstRun = runner.runTick();
@@ -135,57 +154,13 @@ describe("keeper runner", () => {
 
     await Promise.resolve();
     deferred.resolve({
-      txHash: "provide-1",
+      txHash: "provide-delegate-1",
       lpAmount: "250"
     });
 
     await Promise.all([firstRun, secondRun]);
 
-    expect(fixture.chain.provideCalls).toBe(1);
-  });
-
-  it("moves to partial lp when provide succeeds but no lp delta is observed yet", async () => {
-    const fixture = createKeeperFixture({
-      chainState: {
-        inputBalance: "500",
-        lpBalance: "0",
-        delegatedLpBalance: "0",
-        provideResult: {
-          txHash: "provide-1",
-          lpAmount: "0"
-        },
-        delegateResult: {
-          txHash: "delegate-1"
-        }
-      }
-    });
-
-    const runner = createKeeperRunner({
-      now: () => now,
-      usersRepository: fixture.usersRepository,
-      strategiesRepository: fixture.strategiesRepository,
-      grantsRepository: fixture.grantsRepository,
-      executionsRepository: fixture.executionsRepository,
-      positionsRepository: fixture.positionsRepository,
-      chain: fixture.chain,
-      locks: new StrategyLocks()
-    });
-
-    const result = await runner.runTick();
-
-    expect(result[0]).toMatchObject({
-      strategyId: "strategy-1",
-      outcome: "skipped",
-      reason: "missing-liquidity"
-    });
-    expect(fixture.chain.delegateCalls).toBe(0);
-    expect(fixture.executionsRepository.list()[0]).toMatchObject({
-      status: "retryable",
-      provideTxHash: "provide-1",
-      lpAmount: "0",
-      errorCode: "LP_NOT_FOUND"
-    });
-    expect(fixture.strategiesRepository.getById("strategy-1")?.status).toBe("partial_lp");
+    expect(fixture.chain.provideDelegateCalls).toBe(1);
   });
 
   it("skips a strategy while cooldown is still active", async () => {
@@ -206,7 +181,10 @@ describe("keeper runner", () => {
       executionsRepository: fixture.executionsRepository,
       positionsRepository: fixture.positionsRepository,
       chain: fixture.chain,
-      locks: new StrategyLocks()
+      locks: new StrategyLocks(),
+      lockStakingModuleAddress: "0xlock",
+      lockStakingModuleName: "lock_staking",
+      lockupSeconds: "86400"
     });
 
     const result = await runner.runTick();
@@ -215,7 +193,7 @@ describe("keeper runner", () => {
     expect(fixture.chain.provideCalls).toBe(0);
   });
 
-  it("uses the combined single-asset provide+delegate path in reward mode", async () => {
+  it("uses the combined single-asset provide+delegate path by default", async () => {
     const fixture = createKeeperFixture({
       grants: [
         {
@@ -245,7 +223,6 @@ describe("keeper runner", () => {
       positionsRepository: fixture.positionsRepository,
       chain: fixture.chain,
       locks: new StrategyLocks(),
-      executionMode: "single-asset-provide-delegate",
       lockStakingModuleAddress: "0xlock",
       lockStakingModuleName: "lock_staking",
       lockupSeconds: "86400"

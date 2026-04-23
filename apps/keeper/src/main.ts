@@ -49,7 +49,6 @@ const runner = createKeeperRunner({
   chain: createChainClient(config),
   locks: new StrategyLocks(),
   lpDenom: config.lpDenom,
-  executionMode: config.executionMode,
   lockStakingModuleAddress: config.lockStakingModuleAddress,
   lockStakingModuleName: config.lockStakingModuleName,
   lockupSeconds: config.lockupSeconds

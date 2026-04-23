@@ -2,7 +2,7 @@
 
 ## Purpose
 
-This runbook covers local startup, dry-run execution, grant debugging, partial failure handling, and a safe rollout sequence for the `stacker` keeper.
+This runbook covers local startup, dry-run execution, grant debugging, and a safe rollout sequence for the `stacker` keeper.
 
 ## Local Startup
 
@@ -67,14 +67,10 @@ output.
 
 - `KEEPER_MODE=live` uses the real Initia `RESTClient` and signs with `KEEPER_PRIVATE_KEY`.
 - Startup fails fast if the derived wallet address does not match `KEEPER_ADDRESS`.
-- `STRATEGY_EXECUTION_MODE=provide-then-delegate` keeps the original two-step flow:
-  1. `dex::single_asset_provide_liquidity_script`
-  2. `mstaking::MsgDelegate`
-- `STRATEGY_EXECUTION_MODE=single-asset-provide-delegate` switches to the direct reward-bearing flow:
+- The keeper always uses the direct reward-bearing flow:
   1. `vip::lock_staking::single_asset_provide_delegate`
   2. no follow-up delegate tx
-- Both flows resolve the input coin metadata with `move.metadata(inputDenom)`, simulate the authz-wrapped call first, derive an LP quote from the simulated Move `0x1::dex::ProvideEvent`, and then BCS-encode `min_liquidity` from that quote before broadcast.
-- In two-step mode, if the tx confirms but no LP delta is observable yet, the strategy moves to `partial_lp` and the next tick retries delegation only after reconciliation sees the LP tokens.
+- The flow resolves the input coin metadata with `move.metadata(inputDenom)`, simulates the authz-wrapped call first, derives an LP quote from the simulated Move `0x1::dex::ProvideEvent`, and then BCS-encodes `min_liquidity` from that quote before broadcast.
 - If simulation does not produce a trustworthy LP quote for the configured pool, the keeper refuses to broadcast.
 
 ## Grant Debugging
@@ -90,33 +86,17 @@ curl -s http://127.0.0.1:3000/grants/prepare \
 Review:
 - keeper address
 - move grant module/function scope
-- staking grant validator allowlist
 - feegrant allowed messages
 
-When `STRATEGY_EXECUTION_MODE=single-asset-provide-delegate`, the move grant should target:
+The move grant should target:
 - module address: `LOCK_STAKING_MODULE_ADDRESS`
 - module name: `LOCK_STAKING_MODULE_NAME`
 - function name: `single_asset_provide_delegate`
 
 If `grants/confirm` succeeds but the keeper still skips the strategy, inspect:
-- `moveGrantStatus`, `stakingGrantStatus`, `feegrantStatus`
-- `moveGrantExpiresAt`, `stakingGrantExpiresAt`, `feegrantExpiresAt`
+- `moveGrantStatus`, `feegrantStatus`
+- `moveGrantExpiresAt`, `feegrantExpiresAt`
 - strategy `status`
-
-## Partial Failure Handling
-
-The keeper currently distinguishes:
-
-- `provide-failed`: liquidity step failed before an LP delta existed
-- `missing-liquidity`: provide tx broadcasted, but LP mint was not observable yet, so the strategy moves to `partial_lp`
-- `delegate-failed`: provide completed, delegation failed, strategy moves to `partial_lp`
-- `provide-pending-confirmation`: existing provide hash has not confirmed yet, so the keeper does not double-send
-
-Recovery sequence:
-
-1. Inspect the latest execution for `provideTxHash` and `delegateTxHash`.
-2. If the strategy is `partial_lp`, rerun the keeper tick after fixing the underlying issue or waiting for the LP balance to become visible.
-3. The runner will retry delegation only when an LP delta is already present.
 
 ## Safe Rollout Checklist
 
@@ -132,5 +112,5 @@ Recovery sequence:
 5. Confirm positions update as expected after dry-run ticks.
 6. Confirm `TARGET_POOL_ID` is the actual pair object address and that each strategy `inputDenom` resolves via `move.metadata(...)`.
 7. Confirm `KEEPER_ADDRESS` matches the configured private key.
-8. If using reward mode, confirm `LOCK_STAKING_MODULE_ADDRESS`, `LOCK_STAKING_MODULE_NAME`, and `LOCKUP_SECONDS` are set.
+8. Confirm `LOCK_STAKING_MODULE_ADDRESS`, `LOCK_STAKING_MODULE_NAME`, and `LOCKUP_SECONDS` are set.
 9. Keep the first live runs limited to small testnet amounts until the quote parser has been validated against your exact pool and denom set.

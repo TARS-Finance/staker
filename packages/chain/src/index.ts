@@ -29,6 +29,5 @@ export type {
   ProvideSingleAssetLiquidityRequest,
   ProvideSingleAssetLiquidityResult,
   SingleAssetProvideDelegateRequest,
-  SingleAssetProvideDelegateResult,
-  StrategyExecutionMode
+  SingleAssetProvideDelegateResult
 } from "./query/types.js";

@@ -117,7 +117,7 @@ await requestJson<{
 const strategyStatus = await requestJson<{
   strategyId: string;
   status: string;
-  executionMode: "provide-then-delegate" | "single-asset-provide-delegate";
+  executionMode: "single-asset-provide-delegate";
   balances: {
     input: string;
     lp: string;

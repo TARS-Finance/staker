@@ -6,7 +6,13 @@ describe("stacker api", () => {
   let app: Awaited<ReturnType<typeof createApp>>;
 
   beforeAll(async () => {
-    app = await createApp();
+    app = await createApp({
+      config: {
+        lockStakingModuleAddress: "0xlock",
+        lockStakingModuleName: "lock_staking",
+        lockupSeconds: "86400"
+      }
+    });
     await app.ready();
   });
 
@@ -18,7 +24,7 @@ describe("stacker api", () => {
   });
 
   afterAll(async () => {
-    await app.close();
+    await app?.close();
   });
 
   it("registers a user, creates a strategy, prepares and confirms grants, and reads status/history", async () => {
@@ -78,14 +84,14 @@ describe("stacker api", () => {
       keeperAddress: string;
       grants: {
         move: { "@type": string };
-        staking: { "@type": string };
+        staking: { "@type": string } | null;
         feegrant: { "@type": string };
       };
     }>();
 
     expect(prepareBody.keeperAddress).toBe("init1replacekeeperaddress");
     expect(prepareBody.grants.move["@type"]).toBe("/cosmos.authz.v1beta1.MsgGrant");
-    expect(prepareBody.grants.staking["@type"]).toBe("/cosmos.authz.v1beta1.MsgGrant");
+    expect(prepareBody.grants.staking).toBeNull();
     expect(prepareBody.grants.feegrant["@type"]).toBe("/cosmos.feegrant.v1beta1.MsgGrantAllowance");
 
     const confirmResponse = await app.inject({
@@ -112,7 +118,7 @@ describe("stacker api", () => {
     expect(confirmBody.strategyStatus).toBe("active");
     expect(confirmBody.grantStatus).toEqual({
       move: "active",
-      staking: "active",
+      staking: "not-required",
       feegrant: "active"
     });
 
@@ -126,6 +132,7 @@ describe("stacker api", () => {
     const statusBody = statusResponse.json<{
       strategyId: string;
       status: string;
+      executionMode: string;
       grantStatus: {
         move: string;
         staking: string;
@@ -142,11 +149,18 @@ describe("stacker api", () => {
 
     expect(statusBody.strategyId).toBe(strategyBody.strategyId);
     expect(statusBody.status).toBe("active");
+    expect(statusBody.executionMode).toBe("single-asset-provide-delegate");
+    expect(statusBody.grantStatus).toEqual({
+      move: "active",
+      staking: "not-required",
+      feegrant: "active",
+      expiresAt: expect.any(String)
+    });
     expect(statusBody.balances).toEqual({
       input: "0",
       lp: "0",
       delegatedLp: "0",
-      delegatedLpKind: "delegated"
+      delegatedLpKind: "bonded-locked"
     });
     expect(statusBody.lastExecution).toBeNull();
 
@@ -170,10 +184,10 @@ describe("stacker api", () => {
   it("prepares a lock-staking move grant when reward mode is enabled", async () => {
     const rewardApp = await createApp({
       config: {
-        executionMode: "single-asset-provide-delegate",
         lockStakingModuleAddress:
           "0x81c3ea419d2fd3a27971021d9dd3cc708def05e5d6a09d39b2f1f9ba18312264",
-        lockStakingModuleName: "lock_staking"
+        lockStakingModuleName: "lock_staking",
+        lockupSeconds: "86400"
       }
     });
 
@@ -303,10 +317,10 @@ describe("stacker api", () => {
   it("labels bonded lock-staking balances explicitly in reward mode status and positions", async () => {
     const rewardApp = await createApp({
       config: {
-        executionMode: "single-asset-provide-delegate",
         lockStakingModuleAddress:
           "0x81c3ea419d2fd3a27971021d9dd3cc708def05e5d6a09d39b2f1f9ba18312264",
-        lockStakingModuleName: "lock_staking"
+        lockStakingModuleName: "lock_staking",
+        lockupSeconds: "86400"
       }
     });
 

@@ -59,11 +59,7 @@ function createServices(db: StackerDatabase, config: ApiConfig): AppServices {
       usersRepository,
       config
     ),
-    positions: new PositionsService(
-      positionsRepository,
-      strategiesRepository,
-      config
-    ),
+    positions: new PositionsService(positionsRepository, strategiesRepository),
     executions: new ExecutionsService(executionsRepository)
   };
 }
