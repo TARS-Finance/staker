@@ -502,7 +502,10 @@ export function createKeeperRunner(dependencies: KeeperDependencies) {
         return buildResult(strategy.id, "skipped", "not-runnable");
       }
 
-      if (!isGrantBundleActive(grant, now)) {
+      if (!isGrantBundleActive(grant, now, {
+        requiresStakingGrant:
+          executionMode !== "single-asset-provide-delegate",
+      })) {
         await dependencies.strategiesRepository.patch(strategy.id, {
           status: "expired",
         });

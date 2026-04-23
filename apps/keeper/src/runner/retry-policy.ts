@@ -9,22 +9,32 @@ type GrantBundle = {
 
 export function isGrantBundleActive(
   grant: GrantBundle | null,
-  now: Date
+  now: Date,
+  input: {
+    requiresStakingGrant?: boolean;
+  } = {}
 ): boolean {
   if (!grant) {
     return false;
   }
 
+  const requiresStakingGrant = input.requiresStakingGrant ?? true;
+
   return (
     grant.moveGrantStatus === "active"
-    && grant.stakingGrantStatus === "active"
     && grant.feegrantStatus === "active"
     && !!grant.moveGrantExpiresAt
-    && !!grant.stakingGrantExpiresAt
     && !!grant.feegrantExpiresAt
     && grant.moveGrantExpiresAt > now
-    && grant.stakingGrantExpiresAt > now
     && grant.feegrantExpiresAt > now
+    && (
+      !requiresStakingGrant
+      || (
+        grant.stakingGrantStatus === "active"
+        && !!grant.stakingGrantExpiresAt
+        && grant.stakingGrantExpiresAt > now
+      )
+    )
   );
 }
 

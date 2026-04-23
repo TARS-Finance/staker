@@ -35,6 +35,8 @@ export class GrantsService {
             moduleName: this.config.dexModuleName,
             functionNames: ["single_asset_provide_liquidity_script"]
           };
+    const requiresStakingGrant =
+      this.config.executionMode !== "single-asset-provide-delegate";
     const moveGrant = buildMoveGrant({
       granter: user.initiaAddress,
       grantee: this.config.keeperAddress,
@@ -43,16 +45,18 @@ export class GrantsService {
       functionNames: moveGrantScope.functionNames,
       expiresAt
     });
-    const stakingGrant = buildStakeGrant({
-      granter: user.initiaAddress,
-      grantee: this.config.keeperAddress,
-      validatorAddress: strategy.validatorAddress,
-      maxTokens: {
-        denom: this.config.lpDenom,
-        amount: strategy.maxAmountPerRun
-      },
-      expiresAt
-    });
+    const stakingGrant = requiresStakingGrant
+      ? buildStakeGrant({
+          granter: user.initiaAddress,
+          grantee: this.config.keeperAddress,
+          validatorAddress: strategy.validatorAddress,
+          maxTokens: {
+            denom: this.config.lpDenom,
+            amount: strategy.maxAmountPerRun
+          },
+          expiresAt
+        })
+      : null;
     const feeGrant = buildFeeGrant({
       granter: user.initiaAddress,
       grantee: this.config.keeperAddress,
@@ -67,14 +71,14 @@ export class GrantsService {
       userId,
       keeperAddress: this.config.keeperAddress,
       moveGrantExpiresAt: expiresAt,
-      stakingGrantExpiresAt: expiresAt,
+      stakingGrantExpiresAt: requiresStakingGrant ? expiresAt : null,
       feegrantExpiresAt: expiresAt,
       moveGrantStatus: "pending",
       stakingGrantStatus: "pending",
       feegrantStatus: "pending",
       scopeJson: {
         moveGrant: moveGrant.toData(),
-        stakingGrant: stakingGrant.toData(),
+        stakingGrant: stakingGrant?.toData() ?? null,
         feeGrant: feeGrant.toData()
       }
     });
@@ -83,7 +87,7 @@ export class GrantsService {
       keeperAddress: this.config.keeperAddress,
       grants: {
         move: moveGrant.toData(),
-        staking: stakingGrant.toData(),
+        staking: stakingGrant?.toData() ?? null,
         feegrant: feeGrant.toData()
       }
     };
@@ -97,14 +101,21 @@ export class GrantsService {
       return null;
     }
 
+    const requiresStakingGrant =
+      this.config.executionMode !== "single-asset-provide-delegate";
+
     await this.grantsRepository.upsertForUser({
       userId,
       keeperAddress: existingGrant.keeperAddress,
       moveGrantExpiresAt: existingGrant.moveGrantExpiresAt,
-      stakingGrantExpiresAt: existingGrant.stakingGrantExpiresAt,
+      stakingGrantExpiresAt: requiresStakingGrant
+        ? existingGrant.stakingGrantExpiresAt
+        : null,
       feegrantExpiresAt: existingGrant.feegrantExpiresAt,
       moveGrantStatus: "active",
-      stakingGrantStatus: "active",
+      stakingGrantStatus: requiresStakingGrant
+        ? "active"
+        : existingGrant.stakingGrantStatus,
       feegrantStatus: "active",
       scopeJson: existingGrant.scopeJson
     });
@@ -119,7 +130,7 @@ export class GrantsService {
       strategyStatus: updatedStrategy?.status ?? "active",
       grantStatus: {
         move: "active",
-        staking: "active",
+        staking: requiresStakingGrant ? "active" : "not-required",
         feegrant: "active"
       }
     };

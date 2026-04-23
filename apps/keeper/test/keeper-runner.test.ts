@@ -217,6 +217,13 @@ describe("keeper runner", () => {
 
   it("uses the combined single-asset provide+delegate path in reward mode", async () => {
     const fixture = createKeeperFixture({
+      grants: [
+        {
+          ...baseGrant,
+          stakingGrantExpiresAt: null,
+          stakingGrantStatus: "pending"
+        }
+      ],
       chainState: {
         inputBalance: "500",
         lpBalance: "0",

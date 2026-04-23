@@ -4,7 +4,8 @@ export const grantStatusSchema = z.enum([
   "pending",
   "active",
   "revoked",
-  "expired"
+  "expired",
+  "not-required"
 ]);
 
 export type GrantStatus = z.infer<typeof grantStatusSchema>;

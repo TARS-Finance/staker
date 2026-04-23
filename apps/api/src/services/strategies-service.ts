@@ -62,7 +62,10 @@ export class StrategiesService {
       executionMode: this.config.executionMode,
       grantStatus: {
         move: grant?.moveGrantStatus ?? "pending",
-        staking: grant?.stakingGrantStatus ?? "pending",
+        staking:
+          this.config.executionMode === "single-asset-provide-delegate"
+            ? "not-required"
+            : (grant?.stakingGrantStatus ?? "pending"),
         feegrant: grant?.feegrantStatus ?? "pending",
         expiresAt: grant?.moveGrantExpiresAt?.toISOString() ?? null
       },

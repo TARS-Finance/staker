@@ -81,7 +81,7 @@ const prepareGrants = await requestJson<{
   keeperAddress: string;
   grants: {
     move: { "@type": string };
-    staking: { "@type": string };
+    staking: { "@type": string } | null;
     feegrant: { "@type": string };
   };
 }>(`${apiBaseUrl}/grants/prepare`, {
@@ -97,7 +97,7 @@ const prepareGrants = await requestJson<{
 
 console.log(`keeper address: ${prepareGrants.keeperAddress}`);
 console.log(
-  `grant payload summary: ${prepareGrants.grants.move["@type"]}, ${prepareGrants.grants.staking["@type"]}, ${prepareGrants.grants.feegrant["@type"]}`
+  `grant payload summary: ${prepareGrants.grants.move["@type"]}, ${prepareGrants.grants.staking?.["@type"] ?? "not-required"}, ${prepareGrants.grants.feegrant["@type"]}`
 );
 
 await requestJson<{

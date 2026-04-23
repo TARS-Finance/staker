@@ -237,6 +237,7 @@ describe("stacker api", () => {
               };
             };
           };
+          staking: null;
         };
       }>();
 
@@ -248,6 +249,52 @@ describe("stacker api", () => {
           function_names: ["single_asset_provide_delegate"]
         }
       ]);
+      expect(prepareBody.grants.staking).toBeNull();
+
+      const confirmResponse = await rewardApp.inject({
+        method: "POST",
+        url: "/grants/confirm",
+        payload: {
+          userId: registerBody.userId,
+          strategyId: strategyBody.strategyId
+        }
+      });
+
+      expect(confirmResponse.statusCode).toBe(200);
+      expect(
+        confirmResponse.json<{
+          grantStatus: {
+            move: string;
+            staking: string;
+            feegrant: string;
+          };
+        }>().grantStatus
+      ).toEqual({
+        move: "active",
+        staking: "not-required",
+        feegrant: "active"
+      });
+
+      const statusResponse = await rewardApp.inject({
+        method: "GET",
+        url: `/strategies/${strategyBody.strategyId}`
+      });
+
+      expect(statusResponse.statusCode).toBe(200);
+      expect(
+        statusResponse.json<{
+          grantStatus: {
+            move: string;
+            staking: string;
+            feegrant: string;
+          };
+        }>().grantStatus
+      ).toEqual({
+        move: "active",
+        staking: "not-required",
+        feegrant: "active",
+        expiresAt: expect.any(String)
+      });
     } finally {
       await rewardApp.close();
     }
