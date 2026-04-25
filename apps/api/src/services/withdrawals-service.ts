@@ -1,6 +1,6 @@
-import type { WithdrawalsRepository } from "@stacker/db";
-import type { StrategiesRepository } from "@stacker/db";
+import type { PositionsRepository, StrategiesRepository, WithdrawalsRepository } from "@stacker/db";
 import type { ChainService } from "./chain-service.js";
+import { parseRewardLockSnapshot } from "./reward-lock.js";
 
 export class WithdrawalsService {
   constructor(
@@ -12,8 +12,23 @@ export class WithdrawalsService {
       lockStakingModuleName: string;
       chainId: string;
       explorerBase: string;
-    }
+    },
+    private readonly positionsRepository?: PositionsRepository
   ) {}
+
+  private async resolveTrackedLpAmount(strategyId: string): Promise<bigint | null> {
+    const position = await this.positionsRepository?.findByStrategyId(strategyId);
+    if (!position) return null;
+
+    const rewardLock = parseRewardLockSnapshot(position.lastRewardSnapshot);
+    if (rewardLock) {
+      const lockedShare = BigInt(rewardLock.lockedShare);
+      if (lockedShare > 0n) return lockedShare;
+    }
+
+    const delegatedLp = BigInt(position.lastDelegatedLpBalance);
+    return delegatedLp > 0n ? delegatedLp : null;
+  }
 
   async createWithdrawal(input: {
     userId: string;
@@ -89,10 +104,16 @@ export class WithdrawalsService {
 
     let lpAmount: bigint;
     try {
-      const poolInfo = await this.chainService.getPoolInfo(strategy.targetPoolId);
-      lpAmount = this.chainService.computeLpFromInput(inputBigInt, poolInfo);
+      lpAmount = (await this.resolveTrackedLpAmount(strategy.id)) ?? (() => {
+        throw new Error("missing tracked lp amount");
+      })();
     } catch {
-      lpAmount = inputBigInt;
+      try {
+        const poolInfo = await this.chainService.getPoolInfo(strategy.targetPoolId);
+        lpAmount = this.chainService.computeLpFromInput(inputBigInt, poolInfo);
+      } catch {
+        lpAmount = inputBigInt;
+      }
     }
 
     if (lpAmount <= 0n) {

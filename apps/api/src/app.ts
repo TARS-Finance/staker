@@ -104,7 +104,8 @@ function createServices(
         lockStakingModuleName: config.lockStakingModuleName,
         chainId: config.initiaChainId,
         explorerBase: config.initiaExplorerUrl,
-      }
+      },
+      positionsRepository
     ),
   };
 }
