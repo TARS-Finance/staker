@@ -22,6 +22,13 @@
       "when": 1777101773735,
       "tag": "0002_add_uusdc_direct_demo",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1777200000000,
+      "tag": "0003_add_withdrawals",
+      "breakpoints": true
     }
   ]
 }

@@ -8,6 +8,7 @@ import {
   PositionsRepository,
   StrategiesRepository,
   UsersRepository,
+  WithdrawalsRepository,
   type StackerDatabase
 } from "@stacker/db";
 import type { ApiConfig } from "./config.js";
@@ -24,9 +25,11 @@ import {
   InitiaGrantVerifier
 } from "./services/grant-verifier.js";
 import { GrantsService } from "./services/grants-service.js";
+import { ChainService } from "./services/chain-service.js";
 import { PositionsService } from "./services/positions-service.js";
 import { StrategiesService } from "./services/strategies-service.js";
 import { UsersService } from "./services/users-service.js";
+import { WithdrawalsService } from "./services/withdrawals-service.js";
 
 export type AppServices = {
   users: UsersService;
@@ -34,6 +37,7 @@ export type AppServices = {
   grants: GrantsService;
   positions: PositionsService;
   executions: ExecutionsService;
+  withdrawals: WithdrawalsService;
 };
 
 declare module "fastify" {
@@ -47,13 +51,25 @@ declare module "fastify" {
 function createServices(
   db: StackerDatabase,
   config: ApiConfig,
-  grantVerifier: GrantVerifier
+  grantVerifier: GrantVerifier,
+  rest: RESTClient
 ): AppServices {
   const usersRepository = new UsersRepository(db);
   const strategiesRepository = new StrategiesRepository(db);
   const grantsRepository = new GrantsRepository(db);
   const positionsRepository = new PositionsRepository(db);
   const executionsRepository = new ExecutionsRepository(db);
+
+  const chainService = new ChainService(rest);
+  const chainConfig = config.targetPoolId && config.merchantValidatorAddress
+    ? {
+        keeperAddress: config.keeperAddress,
+        targetPoolId: config.targetPoolId,
+        validatorAddress: config.merchantValidatorAddress,
+        moduleAddress: config.lockStakingModuleAddress,
+        moduleName: config.lockStakingModuleName,
+      }
+    : undefined;
 
   return {
     users: new UsersService(usersRepository),
@@ -74,9 +90,22 @@ function createServices(
     positions: new PositionsService(
       positionsRepository,
       strategiesRepository,
-      executionsRepository
+      executionsRepository,
+      chainService,
+      chainConfig
     ),
-    executions: new ExecutionsService(executionsRepository)
+    executions: new ExecutionsService(executionsRepository),
+    withdrawals: new WithdrawalsService(
+      new WithdrawalsRepository(db),
+      strategiesRepository,
+      chainService,
+      {
+        lockStakingModuleAddress: config.lockStakingModuleAddress,
+        lockStakingModuleName: config.lockStakingModuleName,
+        chainId: config.initiaChainId,
+        explorerBase: config.initiaExplorerUrl,
+      }
+    ),
   };
 }
 
@@ -98,12 +127,13 @@ export async function createApp(
 
   await app.register(cors, { origin: true });
 
+  const rest = new RESTClient(config.initiaLcdUrl);
   const grantVerifier =
     options.grantVerifier
-    ?? new InitiaGrantVerifier(new RESTClient(config.initiaLcdUrl));
+    ?? new InitiaGrantVerifier(rest);
 
   app.decorate("db", db);
-  app.decorate("services", createServices(db, config, grantVerifier));
+  app.decorate("services", createServices(db, config, grantVerifier, rest));
   app.decorate("stackerConfig", config);
 
   app.addHook("onClose", async () => {

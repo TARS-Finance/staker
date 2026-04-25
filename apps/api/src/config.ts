@@ -19,6 +19,11 @@ export type ApiConfig = {
   lpDenom: string;
   grantExpiryHours: number;
   merchantDemoApyBps: number;
+  merchantInputDenom: string;
+  merchantValidatorAddress: string;
+  targetPoolId: string;
+  initiaChainId: string;
+  initiaExplorerUrl: string;
 };
 
 export function loadApiConfig(overrides: Partial<ApiConfig> = {}): ApiConfig {
@@ -61,6 +66,11 @@ export function loadApiConfig(overrides: Partial<ApiConfig> = {}): ApiConfig {
     lpDenom: process.env.LP_DENOM ?? "ulp",
     grantExpiryHours: Number(process.env.GRANT_EXPIRY_HOURS ?? "720"),
     merchantDemoApyBps: Number(process.env.MERCHANT_DEMO_APY_BPS ?? "0"),
+    merchantInputDenom: process.env.MERCHANT_INPUT_DENOM ?? "uusdc",
+    merchantValidatorAddress: process.env.MERCHANT_VALIDATOR_ADDRESS ?? "",
+    targetPoolId: process.env.TARGET_POOL_ID ?? "",
+    initiaChainId: process.env.INITIA_CHAIN_ID ?? "initiation-2",
+    initiaExplorerUrl: process.env.INITIA_EXPLORER_URL ?? "https://scan.initia.xyz",
     ...overrides
   };
 }
