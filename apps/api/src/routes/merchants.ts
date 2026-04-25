@@ -42,7 +42,8 @@ export async function merchantsRoutes(app: FastifyInstance) {
 
     const balance = await app.services.positions.getMerchantBalance(
       merchant.id,
-      app.stackerConfig.merchantDemoApyBps
+      app.stackerConfig.merchantDemoApyBps,
+      parsed.data.initiaAddress
     );
     return reply.send(balance);
   });
@@ -60,7 +61,8 @@ export async function merchantsRoutes(app: FastifyInstance) {
 
     const overview = await app.services.positions.getMerchantOverview(
       merchant.id,
-      app.stackerConfig.merchantDemoApyBps
+      app.stackerConfig.merchantDemoApyBps,
+      parsed.data.initiaAddress
     );
     return reply.send(overview);
   });
@@ -178,6 +180,36 @@ export async function merchantsRoutes(app: FastifyInstance) {
         txHash: body.data.txHash,
       });
       return reply.send({ status: updated.status, txHash: updated.txHash });
+    } catch (err: unknown) {
+      const e = err as { statusCode?: number; message?: string };
+      return reply.status(e.statusCode ?? 500).send({ error: e.message ?? "Internal error" });
+    }
+  });
+
+  app.post("/merchants/:initiaAddress/unbonds", async (request, reply) => {
+    const params = merchantParamsSchema.safeParse(request.params);
+    if (!params.success) {
+      return reply.status(400).send({ error: params.error.flatten() });
+    }
+
+    const body = withdrawalBodySchema.safeParse(request.body);
+    if (!body.success) {
+      return reply.status(400).send({ error: body.error.flatten() });
+    }
+
+    const merchant = await resolveMerchant(app, params.data.initiaAddress);
+    if (!merchant) {
+      return reply.status(404).send({ error: "Merchant not found" });
+    }
+
+    try {
+      const result = await app.services.withdrawals.createUnbond({
+        userId: merchant.id,
+        initiaAddress: params.data.initiaAddress,
+        strategyId: body.data.strategyId,
+        inputAmount: body.data.inputAmount,
+      });
+      return reply.status(201).send(result);
     } catch (err: unknown) {
       const e = err as { statusCode?: number; message?: string };
       return reply.status(e.statusCode ?? 500).send({ error: e.message ?? "Internal error" });

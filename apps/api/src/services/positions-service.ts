@@ -49,6 +49,22 @@ export class PositionsService {
     }
   }
 
+  private async fetchClaimableInitRewards(userInitiaAddress: string | undefined): Promise<string> {
+    if (!userInitiaAddress || !this.chainService || !this.chainConfig) return "0";
+    try {
+      const stakingAddr = await this.chainService.getStakingAddress({
+        userAddress: userInitiaAddress,
+        moduleAddress: this.chainConfig.moduleAddress,
+        moduleName: this.chainConfig.moduleName,
+      });
+      if (!stakingAddr) return "0";
+      const rewards = await this.chainService.getClaimableInitRewards(stakingAddr);
+      return rewards.toString();
+    } catch {
+      return "0";
+    }
+  }
+
   async listByUserId(userId: string) {
     const positions = await this.positionsRepository.listByUserId(userId);
     const strategies = await this.strategiesRepository.findByUserId(userId);
@@ -74,7 +90,7 @@ export class PositionsService {
     }));
   }
 
-  async getMerchantBalance(userId: string, apyBps: number) {
+  async getMerchantBalance(userId: string, apyBps: number, userInitiaAddress?: string) {
     const [positions, executions] = await Promise.all([
       this.positionsRepository.listByUserId(userId),
       this.executionsRepository.listByUserId(userId)
@@ -91,17 +107,21 @@ export class PositionsService {
         )
         .map((execution) => execution.inputAmount)
     );
-    const yieldEarned = await this.fetchYield(BigInt(principalStaked));
+    const [yieldEarned, claimableInitRewards] = await Promise.all([
+      this.fetchYield(BigInt(principalStaked)),
+      this.fetchClaimableInitRewards(userInitiaAddress),
+    ]);
 
     return {
       principal_available: principalAvailable,
       principal_staked: principalStaked,
       yield_earned: yieldEarned,
+      claimable_init_rewards: claimableInitRewards,
       apy_bps: apyBps
     };
   }
 
-  async getMerchantOverview(userId: string, apyBps: number) {
+  async getMerchantOverview(userId: string, apyBps: number, userInitiaAddress?: string) {
     const [positions, strategies, executions] = await Promise.all([
       this.positionsRepository.listByUserId(userId),
       this.strategiesRepository.findByUserId(userId),
@@ -123,12 +143,16 @@ export class PositionsService {
       (s) => s.status === "active" || s.status === "executing" || s.status === "partial_lp"
     );
 
-    const yieldEarned = await this.fetchYield(BigInt(principalStaked));
+    const [yieldEarned, claimableInitRewards] = await Promise.all([
+      this.fetchYield(BigInt(principalStaked)),
+      this.fetchClaimableInitRewards(userInitiaAddress),
+    ]);
 
     return {
       principal_available: principalAvailable,
       principal_staked: principalStaked,
       yield_earned: yieldEarned,
+      claimable_init_rewards: claimableInitRewards,
       apy_bps: apyBps,
       pool_count: activeStrategies.length,
       total_executions: successfulExecs.length

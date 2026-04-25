@@ -183,10 +183,103 @@ export class ChainService {
   }
 
   /**
-   * Build the MsgExecute message for lock_staking::unlock_and_undelegate.
-   * Args are BCS-encoded base64 strings ready for InterwovenKit.
+   * Resolve the per-user staking sub-account managed by `lock_staking`.
+   * Returns null if the user has never delegated (module returns abort then).
    */
-  buildWithdrawMessages(input: {
+  async getStakingAddress(input: {
+    userAddress: string;
+    moduleAddress: string;
+    moduleName: string;
+  }): Promise<string | null> {
+    const viewFn = (this.rest.move as unknown as {
+      viewFunction(
+        addr: string,
+        module: string,
+        fn: string,
+        typeArgs: string[],
+        args: string[]
+      ): Promise<unknown>;
+    }).viewFunction;
+    if (!viewFn) return null;
+
+    try {
+      const response = await viewFn.call(
+        this.rest.move,
+        input.moduleAddress,
+        input.moduleName,
+        "get_staking_address",
+        [],
+        [bcs.address().serialize(input.userAddress).toBase64()]
+      );
+      const value =
+        typeof response === "string"
+          ? response
+          : (response as { data?: string } | null)?.data;
+      return typeof value === "string" ? value : null;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Total accrued, unclaimed delegator rewards (in `uinit`) for the given
+   * cosmos delegator address.
+   */
+  async getClaimableInitRewards(delegatorBech32: string): Promise<bigint> {
+    if (!delegatorBech32) return 0n;
+    const restUrl = (this.rest as unknown as { URL?: string }).URL;
+    if (!restUrl) return 0n;
+    try {
+      const res = await fetch(
+        `${restUrl.replace(/\/$/, "")}/cosmos/distribution/v1beta1/delegators/${delegatorBech32}/rewards`
+      );
+      if (!res.ok) return 0n;
+      const body = (await res.json()) as {
+        total?: Array<{ denom?: string; amount?: string }>;
+      };
+      const init = body.total?.find((c) => c.denom === "uinit");
+      if (!init?.amount) return 0n;
+      // Distribution rewards are returned as decimal strings (e.g. "12345.6789"). Floor to int micro-uinit.
+      const floored = init.amount.split(".")[0];
+      return floored ? BigInt(floored) : 0n;
+    } catch {
+      return 0n;
+    }
+  }
+
+  /**
+   * Returns the L1 staking module's `unbonding_time` (in milliseconds), or null
+   * if the staking-params endpoint is unreachable. Used by the merchant
+   * dashboard to surface a "claimable in X days" countdown after the user
+   * triggers a `lock_staking::undelegate`.
+   */
+  async getUnbondingTimeMs(): Promise<number | null> {
+    const restUrl = (this.rest as unknown as { URL?: string }).URL;
+    if (!restUrl) return null;
+    try {
+      const res = await fetch(
+        `${restUrl.replace(/\/$/, "")}/cosmos/staking/v1beta1/params`
+      );
+      if (!res.ok) return null;
+      const body = (await res.json()) as { params?: { unbonding_time?: string } };
+      const raw = body.params?.unbonding_time;
+      if (!raw) return null;
+      const match = raw.match(/^([\d.]+)s$/);
+      if (!match) return null;
+      const seconds = Number(match[1]);
+      return Number.isFinite(seconds) ? seconds * 1000 : null;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Build the MsgExecute for lock_staking::undelegate(signer, metadata, none, lp_amount, validator).
+   * This starts unbonding LP shares so the user can later call withdraw_asset
+   * to retrieve the LP tokens, then a dex withdraw to convert LP back to
+   * the underlying USDC + INIT.
+   */
+  buildUndelegateMessages(input: {
     userAddress: string;
     targetPoolId: string;
     validatorAddress: string;
@@ -202,13 +295,51 @@ export class ChainService {
           sender: input.userAddress,
           moduleAddress: moduleAddressBech32,
           moduleName: input.moduleName,
-          functionName: "unlock_and_undelegate",
+          functionName: "undelegate",
           typeArgs: [],
           args: [
+            // Object<Metadata> for the LP token — its address equals targetPoolId
             bcs.object().serialize(input.targetPoolId).toBase64(),
-            bcs.string().serialize(input.validatorAddress).toBase64(),
+            // Option<u64> release_time — None lets the module pick the next unlock window
+            bcs.option(bcs.u64()).serialize(null).toBase64(),
+            // u64 lp amount
             bcs.u64().serialize(input.lpAmount).toBase64(),
+            // String validator
+            bcs.string().serialize(input.validatorAddress).toBase64(),
           ],
+        },
+      },
+    ];
+  }
+
+  /**
+   * Build the MsgExecute message for lock_staking::withdraw_delegator_reward.
+   * The Claim button on the merchant dashboard distributes accumulated staking
+   * rewards back to the user without unstaking principal — the live module ABI
+   * exposes `withdraw_delegator_reward(&signer)` for that, with no other args.
+   */
+  buildWithdrawMessages(input: {
+    userAddress: string;
+    targetPoolId: string;
+    validatorAddress: string;
+    moduleAddress: string;
+    moduleName: string;
+    lpAmount: bigint;
+  }): WithdrawMessage[] {
+    void input.targetPoolId;
+    void input.validatorAddress;
+    void input.lpAmount;
+    const moduleAddressBech32 = hexToBech32(input.moduleAddress);
+    return [
+      {
+        typeUrl: "/initia.move.v1.MsgExecute",
+        value: {
+          sender: input.userAddress,
+          moduleAddress: moduleAddressBech32,
+          moduleName: input.moduleName,
+          functionName: "withdraw_delegator_reward",
+          typeArgs: [],
+          args: [],
         },
       },
     ];

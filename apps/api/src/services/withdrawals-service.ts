@@ -70,6 +70,56 @@ export class WithdrawalsService {
     };
   }
 
+  async createUnbond(input: {
+    userId: string;
+    initiaAddress: string;
+    strategyId: string;
+    inputAmount: string;
+  }) {
+    const strategy = await this.strategiesRepository.findById(input.strategyId);
+
+    if (!strategy || strategy.userId !== input.userId) {
+      throw Object.assign(new Error("Strategy not found"), { statusCode: 404 });
+    }
+
+    const inputBigInt = BigInt(input.inputAmount);
+    if (inputBigInt <= 0n) {
+      throw Object.assign(new Error("Input amount must be positive"), { statusCode: 400 });
+    }
+
+    let lpAmount: bigint;
+    try {
+      const poolInfo = await this.chainService.getPoolInfo(strategy.targetPoolId);
+      lpAmount = this.chainService.computeLpFromInput(inputBigInt, poolInfo);
+    } catch {
+      lpAmount = inputBigInt;
+    }
+
+    if (lpAmount <= 0n) {
+      throw Object.assign(new Error("Computed LP amount is zero; pool may be empty"), { statusCode: 400 });
+    }
+
+    const messages = this.chainService.buildUndelegateMessages({
+      userAddress: input.initiaAddress,
+      targetPoolId: strategy.targetPoolId,
+      validatorAddress: strategy.validatorAddress,
+      moduleAddress: this.chainConfig.lockStakingModuleAddress,
+      moduleName: this.chainConfig.lockStakingModuleName,
+      lpAmount,
+    });
+
+    const unbondingMs = (await this.chainService.getUnbondingTimeMs()) ?? 14 * 24 * 60 * 60 * 1000;
+    const releaseAt = new Date(Date.now() + unbondingMs).toISOString();
+
+    return {
+      lpAmount: lpAmount.toString(),
+      messages,
+      chainId: this.chainConfig.chainId,
+      unbondingMs,
+      releaseAt,
+    };
+  }
+
   async confirmWithdrawal(input: {
     userId: string;
     withdrawalId: string;
