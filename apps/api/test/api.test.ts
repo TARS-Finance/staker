@@ -188,6 +188,102 @@ describe("stacker api", () => {
     expect(executionsResponse.json()).toEqual({ executions: [] });
   });
 
+  it("returns public landing merchant stats aggregated from backend data", async () => {
+    const firstMerchant = await app.inject({
+      method: "POST",
+      url: "/users/register",
+      payload: {
+        initiaAddress: "init1merchantalpha"
+      }
+    });
+    const secondMerchant = await app.inject({
+      method: "POST",
+      url: "/users/register",
+      payload: {
+        initiaAddress: "init1merchantbeta"
+      }
+    });
+
+    const firstUserId = firstMerchant.json<{ userId: string }>().userId;
+    const secondUserId = secondMerchant.json<{ userId: string }>().userId;
+
+    const activeStrategy = await app.inject({
+      method: "POST",
+      url: "/strategies",
+      payload: {
+        userId: firstUserId,
+        inputDenom: "uusdc",
+        targetPoolId: "pool-1",
+        validatorAddress: "initvaloper1validator",
+        minBalanceAmount: "100",
+        maxAmountPerRun: "1000",
+        maxSlippageBps: 100,
+        cooldownSeconds: 300
+      }
+    });
+
+    const partialStrategy = await app.inject({
+      method: "POST",
+      url: "/strategies",
+      payload: {
+        userId: secondUserId,
+        inputDenom: "uusdc",
+        targetPoolId: "pool-2",
+        validatorAddress: "initvaloper1validator",
+        minBalanceAmount: "100",
+        maxAmountPerRun: "1000",
+        maxSlippageBps: 100,
+        cooldownSeconds: 300
+      }
+    });
+
+    const pausedStrategy = await app.inject({
+      method: "POST",
+      url: "/strategies",
+      payload: {
+        userId: secondUserId,
+        inputDenom: "uusdc",
+        targetPoolId: "pool-3",
+        validatorAddress: "initvaloper1validator",
+        minBalanceAmount: "100",
+        maxAmountPerRun: "1000",
+        maxSlippageBps: 100,
+        cooldownSeconds: 300
+      }
+    });
+
+    const activeStrategyId = activeStrategy.json<{ strategyId: string }>().strategyId;
+    const partialStrategyId = partialStrategy.json<{ strategyId: string }>().strategyId;
+    const pausedStrategyId = pausedStrategy.json<{ strategyId: string }>().strategyId;
+
+    await app.db.execute(`
+      update strategies
+      set status = case
+        when id = '${activeStrategyId}' then 'active'::strategy_status
+        when id = '${partialStrategyId}' then 'partial_lp'::strategy_status
+        when id = '${pausedStrategyId}' then 'paused'::strategy_status
+        else status
+      end
+      where id in (
+        '${activeStrategyId}',
+        '${partialStrategyId}',
+        '${pausedStrategyId}'
+      );
+    `);
+
+    const response = await app.inject({
+      method: "GET",
+      url: "/landing/merchant-stats"
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({
+      avg_apy_bps: 2480,
+      merchant_count: 2,
+      pool_count: 2
+    });
+  });
+
   it("prepares a lock-staking move grant when reward mode is enabled", async () => {
     const rewardApp = await createApp({
       config: {

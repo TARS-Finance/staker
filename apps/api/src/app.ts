@@ -15,6 +15,7 @@ import type { ApiConfig } from "./config.js";
 import { loadApiConfig } from "./config.js";
 import { executionsRoutes } from "./routes/executions.js";
 import { grantsRoutes } from "./routes/grants.js";
+import { landingRoutes } from "./routes/landing.js";
 import { merchantsRoutes } from "./routes/merchants.js";
 import { positionsRoutes } from "./routes/positions.js";
 import { strategiesRoutes } from "./routes/strategies.js";
@@ -26,12 +27,14 @@ import {
 } from "./services/grant-verifier.js";
 import { GrantsService } from "./services/grants-service.js";
 import { ChainService } from "./services/chain-service.js";
+import { LandingService } from "./services/landing-service.js";
 import { PositionsService } from "./services/positions-service.js";
 import { StrategiesService } from "./services/strategies-service.js";
 import { UsersService } from "./services/users-service.js";
 import { WithdrawalsService } from "./services/withdrawals-service.js";
 
 export type AppServices = {
+  landing: LandingService;
   users: UsersService;
   strategies: StrategiesService;
   grants: GrantsService;
@@ -72,6 +75,9 @@ function createServices(
     : undefined;
 
   return {
+    landing: new LandingService(usersRepository, strategiesRepository, {
+      merchantDemoApyBps: config.merchantDemoApyBps
+    }),
     users: new UsersService(usersRepository),
     strategies: new StrategiesService(
       strategiesRepository,
@@ -147,6 +153,7 @@ export async function createApp(
   await app.register(usersRoutes);
   await app.register(strategiesRoutes);
   await app.register(grantsRoutes);
+  await app.register(landingRoutes);
   await app.register(positionsRoutes);
   await app.register(merchantsRoutes);
   await app.register(executionsRoutes);

@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { users } from "../../drizzle/schema.js";
 import type { StackerDatabase } from "../client.js";
 
@@ -32,5 +32,13 @@ export class UsersRepository {
     });
 
     return user ?? null;
+  }
+
+  async countAll() {
+    const [row] = await this.db
+      .select({ count: sql<number>`count(*)` })
+      .from(users);
+
+    return Number(row?.count ?? 0);
   }
 }

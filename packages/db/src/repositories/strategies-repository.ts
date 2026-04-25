@@ -1,4 +1,4 @@
-import { and, eq, inArray, isNull, lte, or } from "drizzle-orm";
+import { and, eq, inArray, isNull, lte, or, sql } from "drizzle-orm";
 import { strategies } from "../../drizzle/schema.js";
 import type { StackerDatabase } from "../client.js";
 
@@ -60,5 +60,16 @@ export class StrategiesRepository {
         or(isNull(strategies.nextEligibleAt), lte(strategies.nextEligibleAt, now))
       )
     });
+  }
+
+  async countDistinctActivePools() {
+    const [row] = await this.db
+      .select({
+        count: sql<number>`count(distinct ${strategies.targetPoolId})`
+      })
+      .from(strategies)
+      .where(inArray(strategies.status, ["active", "executing", "partial_lp"]));
+
+    return Number(row?.count ?? 0);
   }
 }
