@@ -4,14 +4,14 @@ import {
   PositionsRepository,
   StrategiesRepository
 } from "@stacker/db";
-import { canTransitionStrategyStatus } from "@stacker/shared";
+import { canTransitionStrategyStatus, type InputDenom } from "@stacker/shared";
 import type { ApiConfig } from "../config.js";
 import { getDelegatedLpKind } from "./position-mode.js";
 import { parseRewardLockSnapshot } from "./reward-lock.js";
 
 export type CreateStrategyInput = {
   userId: string;
-  inputDenom: "usdc" | "iusdc";
+  inputDenom: InputDenom;
   targetPoolId: string;
   validatorAddress: string;
   minBalanceAmount: string;
@@ -32,7 +32,7 @@ export class StrategiesService {
   async create(input: CreateStrategyInput) {
     return this.strategiesRepository.create({
       userId: input.userId,
-      status: "grant_pending",
+      status: this.config.executionMode === "direct" ? "active" : "grant_pending",
       inputDenom: input.inputDenom,
       targetPoolId: input.targetPoolId,
       dexModuleAddress: this.config.dexModuleAddress,
@@ -56,17 +56,26 @@ export class StrategiesService {
     const position = await this.positionsRepository.findByStrategyId(strategy.id);
     const lastExecution =
       await this.executionsRepository.findLatestForStrategy(strategy.id);
+    const grantStatus =
+      this.config.executionMode === "direct"
+        ? {
+            move: "not-required" as const,
+            staking: "not-required" as const,
+            feegrant: "not-required" as const,
+            expiresAt: null
+          }
+        : {
+            move: grant?.moveGrantStatus ?? "pending",
+            staking: "not-required" as const,
+            feegrant: grant?.feegrantStatus ?? "pending",
+            expiresAt: grant?.moveGrantExpiresAt?.toISOString() ?? null
+          };
 
     return {
       strategyId: strategy.id,
       status: strategy.status,
       executionMode: "single-asset-provide-delegate" as const,
-      grantStatus: {
-        move: grant?.moveGrantStatus ?? "pending",
-        staking: "not-required" as const,
-        feegrant: grant?.feegrantStatus ?? "pending",
-        expiresAt: grant?.moveGrantExpiresAt?.toISOString() ?? null
-      },
+      grantStatus,
       balances: {
         input: position?.lastInputBalance ?? "0",
         lp: position?.lastLpBalance ?? "0",

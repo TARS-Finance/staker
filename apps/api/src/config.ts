@@ -1,10 +1,14 @@
 import { config as loadDotEnv } from "dotenv";
+import { resolve } from "node:path";
 import { loadEnvironment } from "@stacker/shared";
+
+const ROOT_ENV_PATH = resolve(import.meta.dirname, "../../../.env");
 
 export type ApiConfig = {
   port: number;
   databaseUrl: string;
   initiaLcdUrl: string;
+  executionMode: "authz" | "direct";
   keeperAddress: string;
   dexModuleAddress: string;
   dexModuleName: string;
@@ -14,10 +18,17 @@ export type ApiConfig = {
   feeDenom: string;
   lpDenom: string;
   grantExpiryHours: number;
+  merchantDemoApyBps: number;
 };
 
 export function loadApiConfig(overrides: Partial<ApiConfig> = {}): ApiConfig {
-  loadDotEnv({ quiet: true });
+  loadDotEnv({ path: ROOT_ENV_PATH, quiet: true, override: true });
+  const defaultExecutionMode =
+    process.env.NODE_ENV === "test"
+      ? "authz"
+      : process.env.KEEPER_EXECUTION_MODE === "direct"
+        ? "direct"
+        : "authz";
 
   const env = loadEnvironment({
     ...process.env,
@@ -39,6 +50,7 @@ export function loadApiConfig(overrides: Partial<ApiConfig> = {}): ApiConfig {
     port: Number(process.env.API_PORT ?? "3000"),
     databaseUrl: env.databaseUrl,
     initiaLcdUrl: env.initiaLcdUrl,
+    executionMode: defaultExecutionMode,
     keeperAddress: env.keeperAddress,
     dexModuleAddress: env.dexModuleAddress,
     dexModuleName: env.dexModuleName,
@@ -48,6 +60,7 @@ export function loadApiConfig(overrides: Partial<ApiConfig> = {}): ApiConfig {
     feeDenom: process.env.FEE_DENOM ?? "uinit",
     lpDenom: process.env.LP_DENOM ?? "ulp",
     grantExpiryHours: Number(process.env.GRANT_EXPIRY_HOURS ?? "720"),
+    merchantDemoApyBps: Number(process.env.MERCHANT_DEMO_APY_BPS ?? "0"),
     ...overrides
   };
 }

@@ -8,3 +8,4 @@ coverage/
 .turbo/
 *.log
 .worktrees/
+.pnpm-store/

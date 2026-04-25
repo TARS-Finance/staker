@@ -48,7 +48,37 @@ export function minBigIntString(left: string, right: string): string {
 
 export function serializeError(error: unknown): string {
   if (error instanceof Error) {
-    return error.message;
+    const candidate = error as Error & {
+      code?: string;
+      response?: {
+        status?: number;
+        data?: unknown;
+      };
+    };
+    const parts = [error.message];
+
+    if (candidate.code) {
+      parts.push(`code=${candidate.code}`);
+    }
+
+    if (candidate.response?.status !== undefined) {
+      parts.push(`status=${candidate.response.status}`);
+    }
+
+    if (candidate.response?.data !== undefined) {
+      const responseData =
+        typeof candidate.response.data === "string"
+          ? candidate.response.data
+          : JSON.stringify(candidate.response.data);
+
+      parts.push(`response=${responseData}`);
+    }
+
+    return parts.join(" | ");
+  }
+
+  if (typeof error === "object") {
+    return JSON.stringify(error);
   }
 
   return String(error);

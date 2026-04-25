@@ -8,6 +8,7 @@ describe("stacker api", () => {
   beforeAll(async () => {
     app = await createApp({
       config: {
+        keeperAddress: "init1replacekeeperaddress",
         lockStakingModuleAddress: "0xlock",
         lockStakingModuleName: "lock_staking",
         lockupSeconds: "86400"
@@ -190,6 +191,7 @@ describe("stacker api", () => {
   it("prepares a lock-staking move grant when reward mode is enabled", async () => {
     const rewardApp = await createApp({
       config: {
+        keeperAddress: "init1replacekeeperaddress",
         lockStakingModuleAddress:
           "0x81c3ea419d2fd3a27971021d9dd3cc708def05e5d6a09d39b2f1f9ba18312264",
         lockStakingModuleName: "lock_staking",
@@ -329,6 +331,7 @@ describe("stacker api", () => {
   it("labels bonded lock-staking balances explicitly in reward mode status and positions", async () => {
     const rewardApp = await createApp({
       config: {
+        keeperAddress: "init1replacekeeperaddress",
         lockStakingModuleAddress:
           "0x81c3ea419d2fd3a27971021d9dd3cc708def05e5d6a09d39b2f1f9ba18312264",
         lockStakingModuleName: "lock_staking",
@@ -544,6 +547,7 @@ describe("stacker api", () => {
     let verificationInput: Record<string, string> | null = null;
     const verifyingApp = await createApp({
       config: {
+        keeperAddress: "init1replacekeeperaddress",
         lockStakingModuleAddress: "0xlockverify",
         lockStakingModuleName: "lock_staking",
         lockupSeconds: "86400"
@@ -627,6 +631,7 @@ describe("stacker api", () => {
   it("rejects grant confirmation when move authz or feegrant verification fails", async () => {
     const rejectingApp = await createApp({
       config: {
+        keeperAddress: "init1replacekeeperaddress",
         lockStakingModuleAddress: "0xlockreject",
         lockStakingModuleName: "lock_staking",
         lockupSeconds: "86400"

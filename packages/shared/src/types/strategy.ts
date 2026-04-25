@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-export const inputDenomSchema = z.enum(["usdc", "iusdc"]);
+export const inputDenomSchema = z.enum(["usdc", "iusdc", "uusdc"]);
 export const strategyStatusSchema = z.enum([
   "draft",
   "grant_pending",

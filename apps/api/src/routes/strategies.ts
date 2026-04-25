@@ -1,9 +1,10 @@
 import { z } from "zod";
 import type { FastifyInstance } from "fastify";
+import { inputDenomSchema } from "@stacker/shared";
 
 const createStrategySchema = z.object({
   userId: z.string().uuid(),
-  inputDenom: z.enum(["usdc", "iusdc"]),
+  inputDenom: inputDenomSchema,
   targetPoolId: z.string().min(1),
   validatorAddress: z.string().min(1),
   minBalanceAmount: z.string().min(1),

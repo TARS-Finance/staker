@@ -4,7 +4,7 @@ import { resolve } from "node:path";
 type MockFeConfig = {
   walletAddress: string;
   strategy: {
-    inputDenom: "usdc" | "iusdc";
+    inputDenom: "usdc" | "iusdc" | "uusdc";
     targetPoolId: string;
     validatorAddress: string;
     minBalanceAmount: string;

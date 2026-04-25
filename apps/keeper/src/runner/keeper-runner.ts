@@ -9,6 +9,7 @@ import {
   minBigIntString,
   serializeError,
 } from "./retry-policy.js";
+import { describeInputAmount, noopLogger, type LoggerLike } from "../logger.js";
 import { StrategyLocks } from "./locks.js";
 
 type UserRecord = {
@@ -116,6 +117,8 @@ type KeeperDependencies = {
   lockStakingModuleAddress: string;
   lockStakingModuleName: string;
   lockupSeconds: string;
+  requireGrants?: boolean;
+  logger?: LoggerLike;
 };
 
 export type TickResult = {
@@ -141,6 +144,8 @@ function buildResult(
 export function createKeeperRunner(dependencies: KeeperDependencies) {
   const locks = dependencies.locks ?? new StrategyLocks();
   const lpDenom = dependencies.lpDenom ?? "ulp";
+  const requireGrants = dependencies.requireGrants ?? true;
+  const logger = dependencies.logger ?? noopLogger;
   const executionStatusForCompletion = (
     mode: KeeperMode,
   ): "success" | "simulated" => (mode === "dry-run" ? "simulated" : "success");
@@ -189,6 +194,7 @@ export function createKeeperRunner(dependencies: KeeperDependencies) {
     strategy: StrategyRecord,
     user: UserRecord,
     now: Date,
+    strategyLogger: LoggerLike,
   ): Promise<TickResult> {
     const inputBalance = await dependencies.chain.getInputBalance({
       userAddress: user.initiaAddress,
@@ -196,14 +202,28 @@ export function createKeeperRunner(dependencies: KeeperDependencies) {
     });
 
     if (BigInt(inputBalance) < BigInt(strategy.minBalanceAmount)) {
+      strategyLogger.info(
+        {
+          inputBalanceRaw: inputBalance,
+          inputBalanceDisplay: describeInputAmount(strategy.inputDenom, inputBalance),
+          minBalanceAmountRaw: strategy.minBalanceAmount,
+          minBalanceAmountDisplay: describeInputAmount(
+            strategy.inputDenom,
+            strategy.minBalanceAmount
+          )
+        },
+        "keeper strategy skipped below threshold"
+      );
       return buildResult(strategy.id, "skipped", "below-threshold");
     }
+
+    const inputAmount = minBigIntString(inputBalance, strategy.maxAmountPerRun);
 
     const execution = await dependencies.executionsRepository.create({
       strategyId: strategy.id,
       userId: strategy.userId,
       status: "providing",
-      inputAmount: minBigIntString(inputBalance, strategy.maxAmountPerRun),
+      inputAmount,
       lpAmount: null,
       provideTxHash: null,
       delegateTxHash: null,
@@ -220,12 +240,34 @@ export function createKeeperRunner(dependencies: KeeperDependencies) {
     try {
       const releaseTime = Math.floor(now.getTime() / 1000)
         + Number(dependencies.lockupSeconds);
+      strategyLogger.info(
+        {
+          inputBalanceRaw: inputBalance,
+          inputBalanceDisplay: describeInputAmount(strategy.inputDenom, inputBalance),
+          minBalanceAmountRaw: strategy.minBalanceAmount,
+          minBalanceAmountDisplay: describeInputAmount(
+            strategy.inputDenom,
+            strategy.minBalanceAmount
+          ),
+          maxAmountPerRunRaw: strategy.maxAmountPerRun,
+          maxAmountPerRunDisplay: describeInputAmount(
+            strategy.inputDenom,
+            strategy.maxAmountPerRun
+          ),
+          inputAmountRaw: inputAmount,
+          inputAmountDisplay: describeInputAmount(strategy.inputDenom, inputAmount),
+          lockupSeconds: dependencies.lockupSeconds,
+          releaseTime,
+          releaseTimeIso: new Date(releaseTime * 1000).toISOString()
+        },
+        "keeper strategy executing provide+delegate"
+      );
       const provided = await dependencies.chain.singleAssetProvideDelegate({
         userAddress: user.initiaAddress,
         targetPoolId: strategy.targetPoolId,
         inputDenom: strategy.inputDenom,
         lpDenom,
-        amount: execution.inputAmount,
+        amount: inputAmount,
         maxSlippageBps: strategy.maxSlippageBps,
         moduleAddress: dependencies.lockStakingModuleAddress,
         moduleName: dependencies.lockStakingModuleName,
@@ -256,19 +298,37 @@ export function createKeeperRunner(dependencies: KeeperDependencies) {
         nextEligibleAt: computeNextEligibleAt(now, strategy.cooldownSeconds),
         pauseReason: null,
       });
+      strategyLogger.info(
+        {
+          txHash: provided.txHash,
+          lpAmountRaw: provided.lpAmount,
+          rewardSnapshot: provided.rewardSnapshot ?? null
+        },
+        "keeper strategy provide+delegate succeeded"
+      );
 
       return buildResult(strategy.id, "executed", "success");
     } catch (error) {
+      const serializedError = serializeError(error);
+
       await dependencies.executionsRepository.update(execution.id, {
         status: "failed",
         errorCode: "PROVIDE_FAILED",
-        errorMessage: serializeError(error),
+        errorMessage: serializedError,
         finishedAt: now,
       });
       await dependencies.strategiesRepository.patch(strategy.id, {
         status: "active",
         nextEligibleAt: computeNextEligibleAt(now, strategy.cooldownSeconds),
       });
+      strategyLogger.error(
+        {
+          error: serializedError,
+          inputAmountRaw: inputAmount,
+          inputAmountDisplay: describeInputAmount(strategy.inputDenom, inputAmount)
+        },
+        "keeper strategy provide+delegate failed"
+      );
 
       return buildResult(strategy.id, "skipped", "provide-failed");
     }
@@ -279,34 +339,72 @@ export function createKeeperRunner(dependencies: KeeperDependencies) {
     now: Date,
   ): Promise<TickResult> {
     if (strategy.status !== "active") {
+      logger.debug(
+        {
+          strategyId: strategy.id,
+          status: strategy.status
+        },
+        "keeper strategy skipped because it is not active"
+      );
       return buildResult(strategy.id, "skipped", "not-runnable");
     }
 
     if (!locks.acquire(strategy.id)) {
+      logger.debug(
+        {
+          strategyId: strategy.id
+        },
+        "keeper strategy skipped because lock is already held"
+      );
       return buildResult(strategy.id, "skipped", "locked");
     }
 
     try {
       const user = await dependencies.usersRepository.findById(strategy.userId);
-      const grant = await dependencies.grantsRepository.findByUserId(
-        strategy.userId,
-      );
+      const grant = requireGrants
+        ? await dependencies.grantsRepository.findByUserId(strategy.userId)
+        : null;
 
       if (!user) {
+        logger.warn(
+          {
+            strategyId: strategy.id,
+            userId: strategy.userId
+          },
+          "keeper strategy skipped because user was not found"
+        );
         return buildResult(strategy.id, "skipped", "not-runnable");
       }
 
-      if (!isGrantBundleActive(grant, now, {
-        requiresStakingGrant: false,
-      })) {
+      const strategyLogger = logger.child({
+        strategyId: strategy.id,
+        userId: strategy.userId,
+        userAddress: user.initiaAddress,
+        inputDenom: strategy.inputDenom,
+        targetPoolId: strategy.targetPoolId,
+        validatorAddress: strategy.validatorAddress
+      });
+
+      if (
+        requireGrants
+        && !isGrantBundleActive(grant, now, {
+          requiresStakingGrant: false,
+        })
+      ) {
         await dependencies.strategiesRepository.patch(strategy.id, {
           status: "expired",
         });
+        strategyLogger.warn(
+          {
+            grant
+          },
+          "keeper strategy skipped because required grants are not active"
+        );
 
         return buildResult(strategy.id, "skipped", "grant-expired");
       }
 
-      return executeActiveStrategy(strategy, user, now);
+      return executeActiveStrategy(strategy, user, now, strategyLogger);
     } finally {
       locks.release(strategy.id);
     }
@@ -319,6 +417,14 @@ export function createKeeperRunner(dependencies: KeeperDependencies) {
       const strategies =
         await dependencies.strategiesRepository.findRunnableStrategies(now);
       const results: TickResult[] = [];
+
+      logger.debug(
+        {
+          runnableStrategyCount: strategies.length,
+          tickedAt: now.toISOString()
+        },
+        "keeper tick started"
+      );
 
       for (const strategy of strategies) {
         results.push(await runStrategy(strategy, now));

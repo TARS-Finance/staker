@@ -12,6 +12,7 @@ describe("mock frontend flow", () => {
   beforeAll(async () => {
     app = await createApp({
       config: {
+        keeperAddress: "init1replacekeeperaddress",
         lockStakingModuleAddress: "0xlock",
         lockStakingModuleName: "lock_staking",
         lockupSeconds: "86400"

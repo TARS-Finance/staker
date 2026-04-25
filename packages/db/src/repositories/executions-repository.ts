@@ -57,4 +57,11 @@ export class ExecutionsRepository {
       orderBy: desc(executions.startedAt)
     });
   }
+
+  async listByUserId(userId: string) {
+    return this.db.query.executions.findMany({
+      where: eq(executions.userId, userId),
+      orderBy: desc(executions.startedAt)
+    });
+  }
 }

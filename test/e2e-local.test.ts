@@ -30,6 +30,7 @@ describe("local end-to-end flow", () => {
 
     app = await createApp({
       config: {
+        keeperAddress: "init1replacekeeperaddress",
         lockStakingModuleAddress: "0xlock",
         lockStakingModuleName: "lock_staking",
         lockupSeconds: "86400"

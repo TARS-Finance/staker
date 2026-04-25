@@ -11,9 +11,10 @@ describe("shared domain types", () => {
     expect(canTransitionStrategyStatus("draft", "active")).toBe(false);
   });
 
-  it("only accepts usdc or iusdc as input denoms", () => {
+  it("only accepts usdc, iusdc, or uusdc as input denoms", () => {
     expect(inputDenomSchema.parse("usdc")).toBe("usdc");
     expect(inputDenomSchema.parse("iusdc")).toBe("iusdc");
+    expect(inputDenomSchema.parse("uusdc")).toBe("uusdc");
     expect(() => inputDenomSchema.parse("init")).toThrowError();
   });
 

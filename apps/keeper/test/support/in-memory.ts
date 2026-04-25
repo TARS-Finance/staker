@@ -26,7 +26,7 @@ export type StrategyRecord = {
   id: string;
   userId: string;
   status: StrategyStatus;
-  inputDenom: "usdc" | "iusdc";
+  inputDenom: "usdc" | "iusdc" | "uusdc";
   targetPoolId: string;
   dexModuleAddress: string;
   dexModuleName: string;
@@ -314,6 +314,10 @@ export class FakeKeeperChain {
     releaseTime: string;
   }) {
     this.provideDelegateCalls += 1;
+
+    if (this.state.provideError) {
+      throw this.state.provideError;
+    }
 
     if (this.state.provideDelegatePromise) {
       return this.state.provideDelegatePromise;

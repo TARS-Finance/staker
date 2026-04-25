@@ -11,6 +11,7 @@
     "typecheck": "tsc -p tsconfig.integration.json --noEmit && pnpm -r --if-present typecheck",
     "lint": "eslint scripts test --ext .ts && pnpm -r --if-present lint",
     "test": "node ./scripts/run-vitest.mjs",
+    "demo:seed": "pnpm exec tsx scripts/seed-demo-merchant.ts",
     "smoke:testnet:single-asset-provide-delegate": "pnpm exec tsx scripts/testnet-smoke-single-asset-provide-delegate.ts",
     "db:generate": "pnpm exec drizzle-kit generate --config=drizzle.config.ts",
     "db:migrate": "pnpm exec tsx packages/db/scripts/migrate.ts",

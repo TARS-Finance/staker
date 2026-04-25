@@ -8,6 +8,7 @@ import {
 } from "@initia/initia.js";
 import { delegateLp as buildDelegateLpMsg } from "../staking/delegate-lp.js";
 import { provideSingleAssetLiquidity as buildProvideLiquidityMsg } from "../dex/provide-single-asset-liquidity.js";
+import { buildDirectSingleAssetProvideDelegate } from "../vip/build-direct-single-asset-provide-delegate.js";
 import { singleAssetProvideDelegate as buildProvideDelegateMsg } from "../vip/single-asset-provide-delegate.js";
 import type {
   BondedLockRewardSnapshot,
@@ -82,10 +83,12 @@ export type CreateLiveKeeperChainClientInput = {
   lcdUrl: string;
   privateKey: string;
   keeperAddress: string;
+  chainId?: string;
   gasPrices?: string;
   gasAdjustment?: string;
   restClient?: RestClientLike;
   wallet?: InjectedWalletLike;
+  executionMode?: "authz" | "direct";
 };
 
 function isNotFoundError(error: unknown) {
@@ -337,9 +340,10 @@ export class LiveKeeperChainClient implements KeeperChainClient {
     private readonly rest: RestClientLike,
     private readonly wallet: WalletLike,
     private readonly keeperAddress: string,
-    signerAddress: string
+    private readonly signerAddress: string,
+    private readonly executionMode: "authz" | "direct" = "authz"
   ) {
-    if (signerAddress !== keeperAddress) {
+    if (executionMode === "authz" && signerAddress !== keeperAddress) {
       throw new Error(
         `Configured keeper address ${keeperAddress} does not match derived wallet address ${signerAddress}`
       );
@@ -507,6 +511,15 @@ export class LiveKeeperChainClient implements KeeperChainClient {
   async singleAssetProvideDelegate(
     request: SingleAssetProvideDelegateRequest
   ): Promise<SingleAssetProvideDelegateResult> {
+    if (
+      this.executionMode === "direct"
+      && request.userAddress !== this.signerAddress
+    ) {
+      throw new Error(
+        `Configured direct signer ${this.signerAddress} does not match requested user address ${request.userAddress}`
+      );
+    }
+
     const beforeDelegatedBalance = BigInt(
       await this.getBondedLockedLpBalance({
         userAddress: request.userAddress,
@@ -517,20 +530,32 @@ export class LiveKeeperChainClient implements KeeperChainClient {
       })
     );
     const inputCoinMetadata = await this.rest.move.metadata(request.inputDenom);
-    const simulationMsg = buildProvideDelegateMsg({
-      grantee: this.keeperAddress,
-      userAddress: request.userAddress,
-      moduleAddress: request.moduleAddress,
-      moduleName: request.moduleName,
-      args: [
+    const buildMessage = (minLiquidity: bigint | null) => {
+      const args = [
         bcs.object().serialize(request.targetPoolId).toBase64(),
         bcs.object().serialize(inputCoinMetadata).toBase64(),
         bcs.u64().serialize(BigInt(request.amount)).toBase64(),
-        bcs.option(bcs.u64()).serialize(null).toBase64(),
+        bcs.option(bcs.u64()).serialize(minLiquidity).toBase64(),
         bcs.u64().serialize(BigInt(request.releaseTime)).toBase64(),
         bcs.string().serialize(request.validatorAddress).toBase64(),
-      ],
-    });
+      ];
+
+      return this.executionMode === "direct"
+        ? buildDirectSingleAssetProvideDelegate({
+            userAddress: request.userAddress,
+            moduleAddress: request.moduleAddress,
+            moduleName: request.moduleName,
+            args,
+          })
+        : buildProvideDelegateMsg({
+            grantee: this.keeperAddress,
+            userAddress: request.userAddress,
+            moduleAddress: request.moduleAddress,
+            moduleName: request.moduleName,
+            args,
+          });
+    };
+    const simulationMsg = buildMessage(null);
     const quotedLpAmount = await simulateQuotedLpAmount({
       rest: this.rest,
       wallet: this.wallet,
@@ -542,20 +567,7 @@ export class LiveKeeperChainClient implements KeeperChainClient {
       quotedLpAmount,
       request.maxSlippageBps
     );
-    const msg = buildProvideDelegateMsg({
-      grantee: this.keeperAddress,
-      userAddress: request.userAddress,
-      moduleAddress: request.moduleAddress,
-      moduleName: request.moduleName,
-      args: [
-        bcs.object().serialize(request.targetPoolId).toBase64(),
-        bcs.object().serialize(inputCoinMetadata).toBase64(),
-        bcs.u64().serialize(BigInt(request.amount)).toBase64(),
-        bcs.option(bcs.u64()).serialize(minLiquidity).toBase64(),
-        bcs.u64().serialize(BigInt(request.releaseTime)).toBase64(),
-        bcs.string().serialize(request.validatorAddress).toBase64(),
-      ],
-    });
+    const msg = buildMessage(minLiquidity);
     const signedTx = await this.wallet.createAndSignTx({
       msgs: [msg],
     });
@@ -636,6 +648,7 @@ export function createLiveKeeperChainClient(
     input.restClient
       ? input.restClient
       : new RESTClient(input.lcdUrl, {
+          chainId: input.chainId,
           gasPrices: input.gasPrices,
           gasAdjustment: input.gasAdjustment,
         } satisfies RESTClientConfig);
@@ -647,5 +660,11 @@ export function createLiveKeeperChainClient(
       ? input.wallet.accAddress
       : key.accAddress;
 
-  return new LiveKeeperChainClient(rest, wallet, input.keeperAddress, signerAddress);
+  return new LiveKeeperChainClient(
+    rest,
+    wallet,
+    input.keeperAddress,
+    signerAddress,
+    input.executionMode ?? "authz"
+  );
 }

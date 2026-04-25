@@ -1,3 +1,4 @@
+import cors from "@fastify/cors";
 import Fastify, { type FastifyInstance } from "fastify";
 import { RESTClient } from "@initia/initia.js";
 import {
@@ -13,6 +14,7 @@ import type { ApiConfig } from "./config.js";
 import { loadApiConfig } from "./config.js";
 import { executionsRoutes } from "./routes/executions.js";
 import { grantsRoutes } from "./routes/grants.js";
+import { merchantsRoutes } from "./routes/merchants.js";
 import { positionsRoutes } from "./routes/positions.js";
 import { strategiesRoutes } from "./routes/strategies.js";
 import { usersRoutes } from "./routes/users.js";
@@ -69,7 +71,11 @@ function createServices(
       config,
       grantVerifier
     ),
-    positions: new PositionsService(positionsRepository, strategiesRepository),
+    positions: new PositionsService(
+      positionsRepository,
+      strategiesRepository,
+      executionsRepository
+    ),
     executions: new ExecutionsService(executionsRepository)
   };
 }
@@ -89,6 +95,9 @@ export async function createApp(
   const app = Fastify({
     logger: options.logger ?? false
   });
+
+  await app.register(cors, { origin: true });
+
   const grantVerifier =
     options.grantVerifier
     ?? new InitiaGrantVerifier(new RESTClient(config.initiaLcdUrl));
@@ -105,6 +114,7 @@ export async function createApp(
   await app.register(strategiesRoutes);
   await app.register(grantsRoutes);
   await app.register(positionsRoutes);
+  await app.register(merchantsRoutes);
   await app.register(executionsRoutes);
 
   return app;

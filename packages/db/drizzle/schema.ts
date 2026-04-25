@@ -9,7 +9,7 @@ import {
   uuid
 } from "drizzle-orm/pg-core";
 
-export const inputDenomEnum = pgEnum("input_denom", ["usdc", "iusdc"]);
+export const inputDenomEnum = pgEnum("input_denom", ["usdc", "iusdc", "uusdc"]);
 export const strategyStatusEnum = pgEnum("strategy_status", [
   "draft",
   "grant_pending",
