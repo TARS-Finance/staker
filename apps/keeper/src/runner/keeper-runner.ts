@@ -427,7 +427,18 @@ export function createKeeperRunner(dependencies: KeeperDependencies) {
       );
 
       for (const strategy of strategies) {
-        results.push(await runStrategy(strategy, now));
+        try {
+          results.push(await runStrategy(strategy, now));
+        } catch (error) {
+          logger.error(
+            {
+              strategyId: strategy.id,
+              error,
+            },
+            "keeper strategy tick threw unexpectedly"
+          );
+          results.push(buildResult(strategy.id, "skipped", "not-runnable"));
+        }
       }
 
       return results;
