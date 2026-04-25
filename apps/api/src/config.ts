@@ -52,7 +52,7 @@ export function loadApiConfig(overrides: Partial<ApiConfig> = {}): ApiConfig {
   });
 
   return {
-    port: Number(process.env.API_PORT ?? "3000"),
+    port: Number(process.env.API_PORT ?? "3010"),
     databaseUrl: env.databaseUrl,
     initiaLcdUrl: env.initiaLcdUrl,
     executionMode: defaultExecutionMode,
